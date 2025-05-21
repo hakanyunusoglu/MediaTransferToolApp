@@ -107,6 +107,15 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
 
             // Alternatif satır rengi
             dgvMappingItems.AlternatingRowsDefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(240, 240, 240);
+
+            dgvMappingItems.DataError += DgvMappingItems_DataError;
+        }
+
+        private void DgvMappingItems_DataError(object sender, DataGridViewDataErrorEventArgs e)
+        {
+            // Hatayı bastır
+            e.ThrowException = false;
+            Console.WriteLine($"MappingItems DataGridView hata: {e.Exception.Message}");
         }
 
         /// <summary>

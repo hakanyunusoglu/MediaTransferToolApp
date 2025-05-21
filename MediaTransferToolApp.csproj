@@ -204,6 +204,7 @@
     <Compile Include="Infrastructure\Services\DestinationService.cs" />
     <Compile Include="Infrastructure\Services\FileService.cs" />
     <Compile Include="Infrastructure\Services\LogService.cs" />
+    <Compile Include="Infrastructure\Services\NullLogService.cs" />
     <Compile Include="Infrastructure\Services\S3Service.cs" />
     <Compile Include="Infrastructure\Services\TransferService.cs" />
     <Compile Include="Program.cs" />

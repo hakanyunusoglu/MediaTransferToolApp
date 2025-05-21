@@ -28,9 +28,6 @@ namespace MediaTransferToolApp.Infrastructure.Services
         public FileService(ILogService logService)
         {
             _logService = logService ?? throw new ArgumentNullException(nameof(logService));
-
-            // EPPlus lisans ayarı
-            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
         }
 
         /// <summary>

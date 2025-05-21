@@ -53,26 +53,33 @@ namespace MediaTransferToolApp.Core.Domain
         /// </summary>
         public override string ToString()
         {
-            string timestamp = Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff");
-            string levelStr = $"[{Level}]";
-
-            string details = "";
-            if (!string.IsNullOrEmpty(FolderName))
+            try
             {
-                details += $" Klasör: {FolderName}";
-            }
+                string timestamp = Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff");
+                string levelStr = $"[{Level}]";
 
-            if (!string.IsNullOrEmpty(CategoryId))
+                string details = "";
+                if (!string.IsNullOrEmpty(FolderName))
+                {
+                    details += $" Klasör: {FolderName}";
+                }
+
+                if (!string.IsNullOrEmpty(CategoryId))
+                {
+                    details += $" ID: {CategoryId}";
+                }
+
+                if (!string.IsNullOrEmpty(FileName))
+                {
+                    details += $" Dosya: {FileName}";
+                }
+
+                return $"{timestamp} {levelStr,-10}{details} - {Message}";
+            }
+            catch (Exception ex)
             {
-                details += $" ID: {CategoryId}";
+                return $"[Format Hatası: {ex.Message}]";
             }
-
-            if (!string.IsNullOrEmpty(FileName))
-            {
-                details += $" Dosya: {FileName}";
-            }
-
-            return $"{timestamp} {levelStr,-10}{details} - {Message}";
         }
 
         /// <summary>
@@ -80,7 +87,14 @@ namespace MediaTransferToolApp.Core.Domain
         /// </summary>
         public string ToFileString()
         {
-            return ToString();
+            try
+            {
+                return ToString();
+            }
+            catch (Exception ex)
+            {
+                return $"[Format Hatası: {ex.Message}]";
+            }
         }
     }
 }

@@ -141,14 +141,29 @@ namespace MediaTransferToolApp.UI.Forms
             // Log olayları
             _logService.OnLogAdded += (sender, logItem) =>
             {
-                // Log eklendiğinde UI'ı güncelle
-                if (InvokeRequired)
+                try
                 {
-                    Invoke(new Action(() => _logTab.AddLogItem(logItem)));
+                    if (_logTab.InvokeRequired)
+                    {
+                        _logTab.Invoke(new Action(() => {
+                            try
+                            {
+                                _logTab.AddLogItem(logItem);
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Log ekleme hatası (invoke içinde): {ex.Message}");
+                            }
+                        }));
+                    }
+                    else
+                    {
+                        _logTab.AddLogItem(logItem);
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    _logTab.AddLogItem(logItem);
+                    Console.WriteLine($"Log olayı işlenirken hata oluştu: {ex.Message}");
                 }
             };
 

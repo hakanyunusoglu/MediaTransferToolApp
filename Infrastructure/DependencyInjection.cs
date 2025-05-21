@@ -16,16 +16,18 @@ namespace MediaTransferToolApp.Infrastructure
         /// <returns>Güncellenen servis koleksiyonu</returns>
         public static IServiceCollection AddInfrastructureServices(this IServiceCollection services)
         {
-            // Önemli: FileService ve LogService arasında döngüsel bağımlılığı önlemek için 
-            // özel bir kayıt sırası kullanılmalıdır
+            // IFileService için basit bir null logger ile geçici bir instance oluşturun
+            var nullLogger = new NullLogService(); // Yeni bir boş logservice oluşturun
+            var fileService = new FileService(nullLogger);
 
-            // Önce IFileService arayüzünü kaydediyoruz, çünkü LogService buna bağımlı
-            services.AddSingleton<IFileService, FileService>();
+            // Gerçek LogService'i oluşturun
+            var logService = new LogService(fileService);
 
-            // Sonra ILogService arayüzünü kaydediyoruz
-            services.AddSingleton<ILogService, LogService>();
+            // Servisleri kaydederken oluşturduğunuz instance'ları kullanın
+            services.AddSingleton<IFileService>(fileService);
+            services.AddSingleton<ILogService>(logService);
 
-            // Diğer servisler
+            // Diğer servisleri ekleyin
             services.AddSingleton<IS3Service, S3Service>();
             services.AddSingleton<IDestinationService, DestinationService>();
             services.AddSingleton<ITransferService, TransferService>();
