@@ -227,37 +227,97 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 string jsonContent = JsonConvert.SerializeObject(requestData);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-                // POST isteği gönder
-                var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                // Authorization header'ı geçici olarak ekle (eğer token varsa ve henüz eklenmemişse)
+                string originalAuthHeader = null;
+                bool tempAuthAdded = false;
 
-                // Eğer 401 Unauthorized hatası alındıysa ve token yenileme imkanı varsa
-                if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                if (_configuration.TokenType != TokenType.None && !string.IsNullOrEmpty(_configuration.Token))
                 {
-                    if (await RefreshTokenAsync())
+                    // Mevcut Authorization header'ı sakla
+                    if (_httpClient.DefaultRequestHeaders.Authorization != null)
                     {
-                        // Token yenilendikten sonra tekrar dene
-                        response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                        originalAuthHeader = _httpClient.DefaultRequestHeaders.Authorization.ToString();
+                    }
+
+                    // Yeni Authorization header'ı ayarla
+                    switch (_configuration.TokenType)
+                    {
+                        case TokenType.Bearer:
+                        case TokenType.JWT:
+                            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
+                        case TokenType.OAuth:
+                            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
+                        case TokenType.ApiKey:
+                            _httpClient.DefaultRequestHeaders.Remove("X-API-KEY");
+                            _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
                     }
                 }
 
-                // Başarılı bir yanıt kodu alındı mı kontrol et (2xx)
-                bool isSuccessful = response.IsSuccessStatusCode;
-
-                if (isSuccessful)
+                try
                 {
-                    await _logService.LogSuccessAsync($"Medya dosyası başarıyla yüklendi: {fileName}", categoryId, fileName: fileName);
-                }
-                else
-                {
-                    string responseBody = await response.Content.ReadAsStringAsync();
-                    await _logService.LogErrorAsync(
-                        $"Medya dosyası yüklenemedi: {fileName}. Durum kodu: {response.StatusCode}",
-                        responseBody,
-                        categoryId,
-                        fileName: fileName);
-                }
+                    // POST isteği gönder
+                    var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
 
-                return isSuccessful;
+                    // Eğer 401 Unauthorized hatası alındıysa ve token yenileme imkanı varsa
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        if (await RefreshTokenAsync())
+                        {
+                            // Token yenilendikten sonra tekrar dene
+                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                        }
+                    }
+
+                    // Başarılı bir yanıt kodu alındı mı kontrol et (2xx)
+                    bool isSuccessful = response.IsSuccessStatusCode;
+
+                    if (isSuccessful)
+                    {
+                        await _logService.LogSuccessAsync($"Medya dosyası başarıyla yüklendi: {fileName}", categoryId, fileName: fileName);
+                    }
+                    else
+                    {
+                        string responseBody = await response.Content.ReadAsStringAsync();
+                        await _logService.LogErrorAsync(
+                            $"Medya dosyası yüklenemedi: {fileName}. Durum kodu: {response.StatusCode}",
+                            responseBody,
+                            categoryId,
+                            fileName: fileName);
+                    }
+
+                    return isSuccessful;
+                }
+                finally
+                {
+                    // Geçici header'ları temizle
+                    if (tempAuthAdded)
+                    {
+                        if (!string.IsNullOrEmpty(originalAuthHeader))
+                        {
+                            // Orijinal header'ı geri yükle
+                            var parts = originalAuthHeader.Split(' ');
+                            if (parts.Length == 2)
+                            {
+                                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(parts[0], parts[1]);
+                            }
+                        }
+                        else
+                        {
+                            _httpClient.DefaultRequestHeaders.Authorization = null;
+                        }
+
+                        if (_configuration.TokenType == TokenType.ApiKey)
+                        {
+                            _httpClient.DefaultRequestHeaders.Remove("X-API-KEY");
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {

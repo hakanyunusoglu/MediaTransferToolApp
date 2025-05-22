@@ -48,6 +48,8 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             var secretKeyToggle = new ToggleButton();
             secretKeyToggle.Dock = DockStyle.Right;
             secretKeyToggle.Width = 30;
+            secretKeyToggle.Height = 23;
+            secretKeyToggle.Margin = new Padding(5, 3, 5, 3);
             secretKeyToggle.Click += (sender, e) =>
             {
                 txtSecretAccessKey.UseSystemPasswordChar = !txtSecretAccessKey.UseSystemPasswordChar;
@@ -59,6 +61,8 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             var accessKeyToggle = new ToggleButton();
             accessKeyToggle.Dock = DockStyle.Right;
             accessKeyToggle.Width = 30;
+            accessKeyToggle.Height = 23;
+            accessKeyToggle.Margin = new Padding(5, 3, 5, 3);
             accessKeyToggle.Click += (sender, e) =>
             {
                 txtAccessKey.UseSystemPasswordChar = !txtAccessKey.UseSystemPasswordChar;

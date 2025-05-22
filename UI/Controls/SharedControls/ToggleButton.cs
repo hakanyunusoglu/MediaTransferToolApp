@@ -50,10 +50,12 @@ namespace MediaTransferToolApp.UI.Controls.SharedControls
             ForeColor = Color.Black;
 
             // Boyut ayarları
-            Size = new Size(30, 23);
+            Size = new Size(25, 23); // Biraz daha küçük
+            MinimumSize = new Size(25, 23);
+            MaximumSize = new Size(30, 25);
 
             // Font ayarları - emoji'ler için uygun font
-            Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular);
+            Font = new Font("Segoe UI Emoji", 6.6F, FontStyle.Regular);
 
             // Diğer özellikler
             Cursor = Cursors.Hand;
