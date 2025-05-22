@@ -141,24 +141,63 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         /// <param name="progress">Transfer ilerleme bilgisi</param>
         public void UpdateTransferProgress(TransferProgressEventArgs progress)
         {
-            // İlerleme yüzdesini güncelle
-            progressBarTotal.Value = progress.ProgressPercentage;
-            lblProgressPercent.Text = $"{progress.ProgressPercentage}%";
-
-            // İşlenen öğe sayılarını güncelle
-            lblProcessedItems.Text = $"{progress.ProcessedItems} / {progress.TotalItems}";
-            lblSuccessfulItems.Text = progress.SuccessfulItems.ToString();
-            lblFailedItems.Text = progress.FailedItems.ToString();
-
-            // Şu anki işlenen öğe bilgisini güncelle
-            var currentItem = progress.CurrentItem;
-            if (currentItem != null)
+            try
             {
-                lblCurrentFolder.Text = currentItem.FolderName;
-                lblCurrentCategoryId.Text = currentItem.CategoryId;
-                lblProgressMediaCount.Text = currentItem.ProcessedMediaCount.ToString();
+                // UI thread kontrolü
+                if (InvokeRequired)
+                {
+                    Invoke(new Action(() => UpdateTransferProgress(progress)));
+                    return;
+                }
+
+                // İlerleme yüzdesini güncelle
+                progressBarTotal.Value = Math.Min(progress.ProgressPercentage, 100);
+                lblProgressPercent.Text = $"{progress.ProgressPercentage}%";
+
+                // İşlenen öğe sayılarını güncelle
+                lblProcessedItems.Text = $"{progress.ProcessedItems} / {progress.TotalItems}";
+                lblSuccessfulItems.Text = progress.SuccessfulItems.ToString();
+                lblFailedItems.Text = progress.FailedItems.ToString();
+
+                // Şu anki işlenen öğe bilgisini güncelle
+                var currentItem = progress.CurrentItem;
+                if (currentItem != null)
+                {
+                    lblCurrentFolder.Text = currentItem.FolderName ?? "-";
+                    lblCurrentCategoryId.Text = currentItem.CategoryId ?? "-";
+
+                    // İşlenen medya sayısını güncelle - bu en önemli kısım
+                    lblProgressMediaCount.Text = currentItem.ProcessedMediaCount.ToString();
+
+                    // Eğer şu an bir dosya işleniyorsa, daha detaylı bilgi göster
+                    if (currentItem.ProcessedMediaCount > 0)
+                    {
+                        lblProgressMediaCount.ForeColor = Color.Blue; // Aktif işlem göstergesi
+                    }
+                    else
+                    {
+                        lblProgressMediaCount.ForeColor = SystemColors.ControlText;
+                    }
+                }
+                else
+                {
+                    lblCurrentFolder.Text = "-";
+                    lblCurrentCategoryId.Text = "-";
+                    lblProgressMediaCount.Text = "0";
+                    lblProgressMediaCount.ForeColor = SystemColors.ControlText;
+                }
+
+                // Form'u yenile
+                this.Refresh();
+                Application.DoEvents();
+            }
+            catch (Exception ex)
+            {
+                // UI güncellemesi hatası durumunda log yazmayı dene
+                Console.WriteLine($"UI güncelleme hatası: {ex.Message}");
             }
         }
+
 
         /// <summary>
         /// Transfer özetini günceller
@@ -166,18 +205,36 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         /// <param name="summary">Transfer özeti</param>
         public void UpdateTransferSummary(TransferSummary summary)
         {
-            // İşlenen öğe sayılarını güncelle
-            lblProcessedItems.Text = $"{summary.ProcessedItems} / {summary.TotalItems}";
-            lblSuccessfulItems.Text = summary.SuccessfulItems.ToString();
-            lblFailedItems.Text = summary.FailedItems.ToString();
-            lblProgressMediaCount.Text = summary.TotalProcessedMedia.ToString();
-
-            // Süre bilgisini göster
-            if (summary.Duration.HasValue)
+            try
             {
-                lblDuration.Text = FormatDuration(summary.Duration.Value);
-                lblDuration.Visible = true;
-                lblDurationLabel.Visible = true;
+                // UI thread kontrolü
+                if (InvokeRequired)
+                {
+                    Invoke(new Action(() => UpdateTransferSummary(summary)));
+                    return;
+                }
+
+                // İşlenen öğe sayılarını güncelle
+                lblProcessedItems.Text = $"{summary.ProcessedItems} / {summary.TotalItems}";
+                lblSuccessfulItems.Text = summary.SuccessfulItems.ToString();
+                lblFailedItems.Text = summary.FailedItems.ToString();
+                lblProgressMediaCount.Text = summary.TotalProcessedMedia.ToString();
+                lblProgressMediaCount.ForeColor = SystemColors.ControlText; // Normal renge çevir
+
+                // Süre bilgisini göster
+                if (summary.Duration.HasValue)
+                {
+                    lblDuration.Text = FormatDuration(summary.Duration.Value);
+                    lblDuration.Visible = true;
+                    lblDurationLabel.Visible = true;
+                }
+
+                // Form'u yenile
+                this.Refresh();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Transfer özeti güncelleme hatası: {ex.Message}");
             }
         }
 

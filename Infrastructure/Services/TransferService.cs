@@ -2,6 +2,7 @@
 using MediaTransferToolApp.Core.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -227,8 +228,8 @@ namespace MediaTransferToolApp.Infrastructure.Services
         /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
         /// <returns>İşlem başarılıysa true, değilse false</returns>
         public async Task<bool> ProcessMappingItemAsync(
-            MappingItem mappingItem,
-            CancellationToken cancellationToken = default)
+     MappingItem mappingItem,
+     CancellationToken cancellationToken = default)
         {
             if (mappingItem == null)
                 throw new ArgumentNullException(nameof(mappingItem));
@@ -249,19 +250,66 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     mappingItem.CategoryId,
                     mappingItem.FolderName);
 
-                // Klasördeki tüm dosyaları işlemek için bir işleme fonksiyonu tanımla
-                int processedMediaCount = await _s3Service.ProcessFolderFilesAsync(
-                    mappingItem.FolderName,
-                    async (fileName, fileStream) =>
-                    {
-                        // İptal kontrolü
-                        if (cancellationToken.IsCancellationRequested)
-                            return false;
+                // Önce klasördeki dosya listesini al
+                var fileKeys = await _s3Service.ListFilesAsync(mappingItem.FolderName);
+                await _logService.LogInfoAsync(
+                    $"Klasörde {fileKeys.Count} adet dosya bulundu: {mappingItem.FolderName}",
+                    mappingItem.CategoryId,
+                    mappingItem.FolderName);
 
-                        try
+                int localProcessedCount = 0;
+                int localSuccessCount = 0;
+                int localFailCount = 0;
+
+                // Her dosyayı tek tek işle
+                foreach (var fileKey in fileKeys)
+                {
+                    // İptal kontrolü
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        await _logService.LogWarningAsync(
+                            $"Transfer iptal edildi. İşlenen dosya sayısı: {localProcessedCount}",
+                            mappingItem.CategoryId,
+                            mappingItem.FolderName);
+                        return false;
+                    }
+
+                    try
+                    {
+                        string fileName = Path.GetFileName(fileKey);
+
+                        // İlerleme durumu güncelle - şu an işlenen dosyayı göster
+                        var currentProgress = new TransferProgressEventArgs
+                        {
+                            TotalItems = _mappingItems.Count,
+                            ProcessedItems = _mappingItems.Count(m => m.Processed),
+                            SuccessfulItems = _mappingItems.Count(m => m.Processed && string.IsNullOrEmpty(m.ErrorMessage)),
+                            FailedItems = _mappingItems.Count(m => m.Processed && !string.IsNullOrEmpty(m.ErrorMessage)),
+                            CurrentItem = mappingItem
+                        };
+
+                        // Şu anki dosyayı işlediğimizi göster
+                        mappingItem.ProcessedMediaCount = localProcessedCount + 1; // +1 çünkü şu an işlenen dosyayı sayıyoruz
+
+                        ProgressChanged?.Invoke(this, currentProgress);
+
+                        await _logService.LogInfoAsync(
+                            $"Dosya işleniyor: {fileName} ({localProcessedCount + 1}/{fileKeys.Count})",
+                            mappingItem.CategoryId,
+                            mappingItem.FolderName,
+                            fileName);
+
+                        // Dosyayı S3'ten indir
+                        using (var fileStream = await _s3Service.DownloadFileAsync(fileKey, cancellationToken))
                         {
                             // Dosyayı Base64 formatına dönüştür
                             string base64Content = await _fileService.ConvertToBase64Async(fileStream, fileName);
+
+                            await _logService.LogInfoAsync(
+                                $"Dosya Base64 formatına dönüştürüldü: {fileName}",
+                                mappingItem.CategoryId,
+                                mappingItem.FolderName,
+                                fileName);
 
                             // Hedef sunucuya yükle
                             bool uploadSuccess = await _destinationService.UploadMediaAsync(
@@ -272,44 +320,94 @@ namespace MediaTransferToolApp.Infrastructure.Services
                                 cancellationToken);
 
                             // Sayaçları güncelle
+                            localProcessedCount++;
                             _totalProcessedMedia++;
+
                             if (uploadSuccess)
                             {
+                                localSuccessCount++;
                                 _successfulUploads++;
+                                await _logService.LogSuccessAsync(
+                                    $"Dosya başarıyla yüklendi: {fileName} ({localProcessedCount}/{fileKeys.Count})",
+                                    mappingItem.CategoryId,
+                                    mappingItem.FolderName,
+                                    fileName);
                             }
                             else
                             {
+                                localFailCount++;
                                 _failedUploads++;
+                                await _logService.LogErrorAsync(
+                                    $"Dosya yüklenemedi: {fileName} ({localProcessedCount}/{fileKeys.Count})",
+                                    "Hedef sunucu yükleme hatası",
+                                    mappingItem.CategoryId,
+                                    mappingItem.FolderName,
+                                    fileName);
                             }
 
-                            return uploadSuccess;
-                        }
-                        catch (Exception ex)
-                        {
-                            await _logService.LogErrorAsync(
-                                $"Medya dosyası işlenirken hata oluştu: {fileName}",
-                                ex.ToString(),
-                                mappingItem.CategoryId,
-                                mappingItem.FolderName,
-                                fileName);
+                            // Her dosya işlendikten sonra ilerleme durumunu güncelle
+                            mappingItem.ProcessedMediaCount = localProcessedCount;
 
-                            _failedUploads++;
-                            return false;
+                            var updatedProgress = new TransferProgressEventArgs
+                            {
+                                TotalItems = _mappingItems.Count,
+                                ProcessedItems = _mappingItems.Count(m => m.Processed),
+                                SuccessfulItems = _mappingItems.Count(m => m.Processed && string.IsNullOrEmpty(m.ErrorMessage)),
+                                FailedItems = _mappingItems.Count(m => m.Processed && !string.IsNullOrEmpty(m.ErrorMessage)),
+                                CurrentItem = mappingItem
+                            };
+
+                            ProgressChanged?.Invoke(this, updatedProgress);
+
+                            // Küçük bir gecikme ekle (UI güncellemesi için)
+                            await Task.Delay(100, cancellationToken);
                         }
-                    },
-                    cancellationToken);
+                    }
+                    catch (Exception fileEx)
+                    {
+                        localProcessedCount++;
+                        localFailCount++;
+                        _totalProcessedMedia++;
+                        _failedUploads++;
+
+                        string fileName = Path.GetFileName(fileKey);
+                        await _logService.LogErrorAsync(
+                            $"Dosya işlenirken hata oluştu: {fileName}",
+                            fileEx.ToString(),
+                            mappingItem.CategoryId,
+                            mappingItem.FolderName,
+                            fileName);
+
+                        // Hata olsa bile sayacı güncelle
+                        mappingItem.ProcessedMediaCount = localProcessedCount;
+
+                        var errorProgress = new TransferProgressEventArgs
+                        {
+                            TotalItems = _mappingItems.Count,
+                            ProcessedItems = _mappingItems.Count(m => m.Processed),
+                            SuccessfulItems = _mappingItems.Count(m => m.Processed && string.IsNullOrEmpty(m.ErrorMessage)),
+                            FailedItems = _mappingItems.Count(m => m.Processed && !string.IsNullOrEmpty(m.ErrorMessage)),
+                            CurrentItem = mappingItem
+                        };
+
+                        ProgressChanged?.Invoke(this, errorProgress);
+                    }
+                }
 
                 // İşlem sonuçlarını kaydet
                 mappingItem.ProcessEndTime = DateTime.Now;
                 mappingItem.Processed = true;
-                mappingItem.ProcessedMediaCount = processedMediaCount;
+                mappingItem.ProcessedMediaCount = localProcessedCount;
 
                 await _logService.LogSuccessAsync(
-                    $"Klasör işlemi tamamlandı: {mappingItem.FolderName}, İşlenen medya sayısı: {processedMediaCount}",
+                    $"Klasör işlemi tamamlandı: {mappingItem.FolderName}, " +
+                    $"Toplam işlenen: {localProcessedCount}, " +
+                    $"Başarılı: {localSuccessCount}, " +
+                    $"Başarısız: {localFailCount}",
                     mappingItem.CategoryId,
                     mappingItem.FolderName);
 
-                return processedMediaCount > 0;
+                return localProcessedCount > 0;
             }
             catch (Exception ex)
             {

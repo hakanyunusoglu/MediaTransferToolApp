@@ -145,7 +145,8 @@ namespace MediaTransferToolApp.UI.Forms
                 {
                     if (_logTab.InvokeRequired)
                     {
-                        _logTab.Invoke(new Action(() => {
+                        _logTab.Invoke(new Action(() =>
+                        {
                             try
                             {
                                 _logTab.AddLogItem(logItem);
@@ -314,44 +315,68 @@ namespace MediaTransferToolApp.UI.Forms
         /// <param name="status">Transfer durumu</param>
         private void UpdateTransferStatus(TransferStatus status)
         {
-            _transferTab.UpdateTransferStatus(status);
-
-            // Status değiştiyse
-            if (status == TransferStatus.Completed || status == TransferStatus.Failed || status == TransferStatus.Cancelled)
+            try
             {
-                // Transfer özeti göster
-                var summary = _transferService.GetSummary();
-                _transferTab.UpdateTransferSummary(summary);
-
-                // Tamamlanma mesajı
-                string statusText = status switch
+                // UI thread kontrolü
+                if (InvokeRequired)
                 {
-                    TransferStatus.Completed => "başarıyla tamamlandı",
-                    TransferStatus.Failed => "bazı hatalarla tamamlandı",
-                    TransferStatus.Cancelled => "kullanıcı tarafından iptal edildi",
-                    _ => ""
-                };
-
-                if (!string.IsNullOrEmpty(statusText))
-                {
-                    MessageBox.Show(
-                        $"Transfer işlemi {statusText}.\n\n" +
-                        $"Toplam Kategori: {summary.TotalItems}\n" +
-                        $"İşlenen Kategori: {summary.ProcessedItems}\n" +
-                        $"Başarılı Kategori: {summary.SuccessfulItems}\n" +
-                        $"Başarısız Kategori: {summary.FailedItems}\n" +
-                        $"Toplam Medya: {summary.TotalProcessedMedia}\n" +
-                        $"Yüklenen Medya: {summary.SuccessfulUploads}\n" +
-                        $"Başarısız Medya: {summary.FailedUploads}",
-                        "Transfer Tamamlandı",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Information);
+                    Invoke(new Action(() => UpdateTransferStatus(status)));
+                    return;
                 }
 
-                _transferTab.SetTransferRunning(false);
+                _transferTab?.UpdateTransferStatus(status);
 
-                // Log tab'ına geç
-                mainTabControl.SelectedIndex = 4;
+                // Status değiştiyse
+                if (status == TransferStatus.Completed || status == TransferStatus.Failed || status == TransferStatus.Cancelled)
+                {
+                    // Transfer özeti göster
+                    var summary = _transferService.GetSummary();
+                    _transferTab?.UpdateTransferSummary(summary);
+
+                    // Status bar'ı güncelle
+                    statusProgressBar.Visible = false;
+                    statusLabel.Text = $"Transfer tamamlandı. Toplam medya: {summary.TotalProcessedMedia}";
+
+                    // Tamamlanma mesajı
+                    string statusText = status switch
+                    {
+                        TransferStatus.Completed => "başarıyla tamamlandı",
+                        TransferStatus.Failed => "bazı hatalarla tamamlandı",
+                        TransferStatus.Cancelled => "kullanıcı tarafından iptal edildi",
+                        _ => ""
+                    };
+
+                    if (!string.IsNullOrEmpty(statusText))
+                    {
+                        MessageBox.Show(
+                            $"Transfer işlemi {statusText}.\n\n" +
+                            $"Toplam Kategori: {summary.TotalItems}\n" +
+                            $"İşlenen Kategori: {summary.ProcessedItems}\n" +
+                            $"Başarılı Kategori: {summary.SuccessfulItems}\n" +
+                            $"Başarısız Kategori: {summary.FailedItems}\n" +
+                            $"Toplam Medya: {summary.TotalProcessedMedia}\n" +
+                            $"Yüklenen Medya: {summary.SuccessfulUploads}\n" +
+                            $"Başarısız Medya: {summary.FailedUploads}",
+                            "Transfer Tamamlandı",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+
+                    _transferTab?.SetTransferRunning(false);
+
+                    // Log tab'ına geç
+                    mainTabControl.SelectedIndex = 4;
+                }
+                else if (status == TransferStatus.Running)
+                {
+                    statusLabel.Text = "Transfer başlatıldı...";
+                    statusProgressBar.Visible = true;
+                    statusProgressBar.Value = 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Transfer durumu güncelleme hatası: {ex.Message}");
             }
         }
 
@@ -361,7 +386,43 @@ namespace MediaTransferToolApp.UI.Forms
         /// <param name="progress">İlerleme bilgisi</param>
         private void UpdateTransferProgress(TransferProgressEventArgs progress)
         {
-            _transferTab.UpdateTransferProgress(progress);
+            try
+            {
+                // UI thread kontrolü
+                if (InvokeRequired)
+                {
+                    Invoke(new Action(() => UpdateTransferProgress(progress)));
+                    return;
+                }
+
+                // Transfer tab'ına ilerleme bilgisini gönder
+                _transferTab?.UpdateTransferProgress(progress);
+
+                // Status bar'ı güncelle
+                if (progress.CurrentItem != null)
+                {
+                    statusLabel.Text = $"İşleniyor: {progress.CurrentItem.FolderName} - {progress.CurrentItem.ProcessedMediaCount} dosya";
+
+                    // Progress bar'ı göster ve güncelle
+                    statusProgressBar.Visible = true;
+                    statusProgressBar.Value = Math.Min(progress.ProgressPercentage, 100);
+                }
+                else
+                {
+                    statusLabel.Text = "Transfer devam ediyor...";
+                    statusProgressBar.Visible = true;
+                    statusProgressBar.Value = Math.Min(progress.ProgressPercentage, 100);
+                }
+
+                // Debug için console'a yazdır
+                Console.WriteLine($"İlerleme Güncellendi: {progress.ProcessedItems}/{progress.TotalItems} - " +
+                                 $"Şu anki: {progress.CurrentItem?.FolderName} - " +
+                                 $"Medya: {progress.CurrentItem?.ProcessedMediaCount}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"İlerleme güncelleme hatası: {ex.Message}");
+            }
         }
 
         /// <summary>

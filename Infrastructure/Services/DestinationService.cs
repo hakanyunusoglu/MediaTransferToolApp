@@ -184,12 +184,21 @@ namespace MediaTransferToolApp.Infrastructure.Services
         /// <param name="description">İsteğe bağlı açıklama</param>
         /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
         /// <returns>Yükleme başarılıysa true, değilse false</returns>
+        /// <summary>
+        /// Medya dosyasını hedef sunucuya yükler
+        /// </summary>
+        /// <param name="categoryId">Kategori ID'si</param>
+        /// <param name="fileName">Dosya adı</param>
+        /// <param name="base64Content">Base64 formatında dosya içeriği</param>
+        /// <param name="description">İsteğe bağlı açıklama</param>
+        /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
+        /// <returns>Yükleme başarılıysa true, değilse false</returns>
         public async Task<bool> UploadMediaAsync(
-     string categoryId,
-     string fileName,
-     string base64Content,
-     string description = "",
-     CancellationToken cancellationToken = default)
+            string categoryId,
+            string fileName,
+            string base64Content,
+            string description = "",
+            CancellationToken cancellationToken = default)
         {
             if (_configuration == null)
             {
@@ -215,17 +224,22 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 // API URL'ini oluştur
                 string apiUrl = BuildApiUrl(categoryId);
 
-                // İstek gövdesi oluştur
-                var requestData = new
-                {
-                    Filename = fileName,
-                    Content = base64Content,
-                    Description = description
-                };
+                // API'nin beklediği formatta array oluştur
+                var mediaArray = new[] {
+                                    new
+                                    {
+                                        Filename = fileName,
+                                        Content = base64Content,
+                                        Description = description
+                                    }
+                                };
 
                 // JSON içeriğini oluştur
-                string jsonContent = JsonConvert.SerializeObject(requestData);
+                string jsonContent = JsonConvert.SerializeObject(mediaArray, Formatting.Indented);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                await _logService.LogInfoAsync($"API isteği gönderiliyor: {apiUrl}", categoryId, fileName: fileName);
+                await _logService.LogInfoAsync($"İstek içeriği: {jsonContent}", categoryId, fileName: fileName);
 
                 // Authorization header'ı geçici olarak ekle (eğer token varsa ve henüz eklenmemişse)
                 string originalAuthHeader = null;
@@ -261,8 +275,8 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                 try
                 {
-                    // HTTP metodunu yapılandırmadan al (varsayılan POST)
-                    string httpMethod = _configuration.MediaUploadMethod ?? "POST";
+                    // HTTP metodunu yapılandırmadan al (varsayılan PATCH)
+                    string httpMethod = _configuration.MediaUploadMethod ?? "PATCH";
 
                     HttpResponseMessage response;
 
@@ -283,10 +297,17 @@ namespace MediaTransferToolApp.Infrastructure.Services
                             response = await _httpClient.SendAsync(patchRequest, cancellationToken);
                             break;
                         default:
-                            await _logService.LogWarningAsync($"Desteklenmeyen HTTP metodu: {httpMethod}. POST kullanılacak.");
-                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                            await _logService.LogWarningAsync($"Desteklenmeyen HTTP metodu: {httpMethod}. PATCH kullanılacak.");
+                            var defaultPatchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                            {
+                                Content = content
+                            };
+                            response = await _httpClient.SendAsync(defaultPatchRequest, cancellationToken);
                             break;
                     }
+
+                    // Response detaylarını logla
+                    await _logService.LogInfoAsync($"API yanıt kodu: {response.StatusCode} ({(int)response.StatusCode})", categoryId, fileName: fileName);
 
                     // Eğer 401 Unauthorized hatası alındıysa ve token yenileme imkanı varsa
                     if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -310,7 +331,11 @@ namespace MediaTransferToolApp.Infrastructure.Services
                                     response = await _httpClient.SendAsync(retryPatchRequest, cancellationToken);
                                     break;
                                 default:
-                                    response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                                    var retryDefaultRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                                    {
+                                        Content = content
+                                    };
+                                    response = await _httpClient.SendAsync(retryDefaultRequest, cancellationToken);
                                     break;
                             }
                         }
@@ -328,9 +353,19 @@ namespace MediaTransferToolApp.Infrastructure.Services
                         string responseBody = await response.Content.ReadAsStringAsync();
                         await _logService.LogErrorAsync(
                             $"Medya dosyası yüklenemedi ({httpMethod}): {fileName}. Durum kodu: {response.StatusCode}",
-                            responseBody,
+                            $"Yanıt içeriği: {responseBody}",
                             categoryId,
                             fileName: fileName);
+
+                        // 500 Internal Server Error için özel loglama
+                        if (response.StatusCode == System.Net.HttpStatusCode.InternalServerError)
+                        {
+                            await _logService.LogErrorAsync(
+                                "Sunucu hatası (500) alındı. Bu genellikle endpoint formatı veya istek içeriği problemi gösterir.",
+                                $"Gönderilen URL: {apiUrl}\nİstek İçeriği: {jsonContent}",
+                                categoryId,
+                                fileName: fileName);
+                        }
                     }
 
                     return isSuccessful;
@@ -596,17 +631,34 @@ namespace MediaTransferToolApp.Infrastructure.Services
         /// </summary>
         /// <param name="categoryId">İsteğe bağlı kategori ID'si</param>
         /// <returns>Tam API URL'si</returns>
+        /// <summary>
+        /// İsteklerde kullanılacak API URL'sini oluşturur
+        /// </summary>
+        /// <param name="categoryId">İsteğe bağlı kategori ID'si</param>
+        /// <returns>Tam API URL'si</returns>
         public string BuildApiUrl(string categoryId = null)
         {
             string endpoint = _configuration.Endpoint.TrimStart('/');
 
             if (!string.IsNullOrEmpty(categoryId))
             {
-                // Endpoint'te {categoryId} yer tutucusu var mı kontrol et
-                if (endpoint.Contains("{categoryId}"))
+                // Endpoint'te :uid yer tutucusu var mı kontrol et
+                if (endpoint.Contains(":uid"))
+                {
+                    // :uid yer tutucusunu gerçek değer ile değiştir
+                    endpoint = endpoint.Replace(":uid", categoryId);
+                }
+                // {categoryId} yer tutucusu var mı kontrol et
+                else if (endpoint.Contains("{categoryId}"))
                 {
                     // {categoryId} yer tutucusunu gerçek değer ile değiştir
                     endpoint = endpoint.Replace("{categoryId}", categoryId);
+                }
+                // {uid} yer tutucusu var mı kontrol et
+                else if (endpoint.Contains("{uid}"))
+                {
+                    // {uid} yer tutucusunu gerçek değer ile değiştir
+                    endpoint = endpoint.Replace("{uid}", categoryId);
                 }
                 else
                 {
@@ -615,7 +667,6 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     {
                         endpoint += "/";
                     }
-
                     endpoint += categoryId;
                 }
             }
