@@ -185,11 +185,11 @@ namespace MediaTransferToolApp.Infrastructure.Services
         /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
         /// <returns>Yükleme başarılıysa true, değilse false</returns>
         public async Task<bool> UploadMediaAsync(
-            string categoryId,
-            string fileName,
-            string base64Content,
-            string description = "",
-            CancellationToken cancellationToken = default)
+     string categoryId,
+     string fileName,
+     string base64Content,
+     string description = "",
+     CancellationToken cancellationToken = default)
         {
             if (_configuration == null)
             {
@@ -261,8 +261,32 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                 try
                 {
-                    // POST isteği gönder
-                    var response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                    // HTTP metodunu yapılandırmadan al (varsayılan POST)
+                    string httpMethod = _configuration.MediaUploadMethod ?? "POST";
+
+                    HttpResponseMessage response;
+
+                    // Seçilen HTTP metoduna göre istek gönder
+                    switch (httpMethod.ToUpperInvariant())
+                    {
+                        case "POST":
+                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                            break;
+                        case "PUT":
+                            response = await _httpClient.PutAsync(apiUrl, content, cancellationToken);
+                            break;
+                        case "PATCH":
+                            var patchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                            {
+                                Content = content,
+                            };
+                            response = await _httpClient.SendAsync(patchRequest, cancellationToken);
+                            break;
+                        default:
+                            await _logService.LogWarningAsync($"Desteklenmeyen HTTP metodu: {httpMethod}. POST kullanılacak.");
+                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                            break;
+                    }
 
                     // Eğer 401 Unauthorized hatası alındıysa ve token yenileme imkanı varsa
                     if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
@@ -270,7 +294,25 @@ namespace MediaTransferToolApp.Infrastructure.Services
                         if (await RefreshTokenAsync())
                         {
                             // Token yenilendikten sonra tekrar dene
-                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                            switch (httpMethod.ToUpperInvariant())
+                            {
+                                case "POST":
+                                    response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                                    break;
+                                case "PUT":
+                                    response = await _httpClient.PutAsync(apiUrl, content, cancellationToken);
+                                    break;
+                                case "PATCH":
+                                    var retryPatchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                                    {
+                                        Content = content
+                                    };
+                                    response = await _httpClient.SendAsync(retryPatchRequest, cancellationToken);
+                                    break;
+                                default:
+                                    response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                                    break;
+                            }
                         }
                     }
 
@@ -279,13 +321,13 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                     if (isSuccessful)
                     {
-                        await _logService.LogSuccessAsync($"Medya dosyası başarıyla yüklendi: {fileName}", categoryId, fileName: fileName);
+                        await _logService.LogSuccessAsync($"Medya dosyası başarıyla yüklendi ({httpMethod}): {fileName}", categoryId, fileName: fileName);
                     }
                     else
                     {
                         string responseBody = await response.Content.ReadAsStringAsync();
                         await _logService.LogErrorAsync(
-                            $"Medya dosyası yüklenemedi: {fileName}. Durum kodu: {response.StatusCode}",
+                            $"Medya dosyası yüklenemedi ({httpMethod}): {fileName}. Durum kodu: {response.StatusCode}",
                             responseBody,
                             categoryId,
                             fileName: fileName);

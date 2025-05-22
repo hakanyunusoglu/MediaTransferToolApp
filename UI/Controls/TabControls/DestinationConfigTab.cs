@@ -164,6 +164,9 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             TextBox txtPasswordParam = Controls.Find("txtPasswordParam", true).FirstOrDefault() as TextBox;
             TextBox txtTokenPath = Controls.Find("txtTokenPath", true).FirstOrDefault() as TextBox;
 
+            // Medya yükleme HTTP metodu alanını al
+            ComboBox cmbMediaUploadMethod = Controls.Find("cmbMediaUploadMethod", true).FirstOrDefault() as ComboBox;
+
             // BaseUrl değerini al ve temizle
             string baseUrl = txtBaseUrl.Text.Trim();
             if (!string.IsNullOrEmpty(baseUrl) && !baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
@@ -212,7 +215,9 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                 TokenRequestMethod = cmbTokenMethod?.SelectedItem?.ToString() ?? "POST",
                 UsernameParameter = txtUsernameParam?.Text.Trim() ?? "username",
                 PasswordParameter = txtPasswordParam?.Text.Trim() ?? "password",
-                TokenResponsePath = txtTokenPath?.Text.Trim() ?? "token"
+                TokenResponsePath = txtTokenPath?.Text.Trim() ?? "token",
+                // Medya yükleme HTTP metodu
+                MediaUploadMethod = cmbMediaUploadMethod?.SelectedItem?.ToString() ?? "POST"
             };
 
             return config;
@@ -240,6 +245,9 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             TextBox txtPasswordParam = Controls.Find("txtPasswordParam", true).FirstOrDefault() as TextBox;
             TextBox txtTokenPath = Controls.Find("txtTokenPath", true).FirstOrDefault() as TextBox;
 
+            // Medya yükleme HTTP metodu alanını al
+            ComboBox cmbMediaUploadMethod = Controls.Find("cmbMediaUploadMethod", true).FirstOrDefault() as ComboBox;
+
             // Yeni alanları doldur
             if (txtTokenEndpoint != null) txtTokenEndpoint.Text = configuration.TokenEndpoint ?? "";
 
@@ -259,6 +267,20 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             if (txtUsernameParam != null) txtUsernameParam.Text = configuration.UsernameParameter ?? "username";
             if (txtPasswordParam != null) txtPasswordParam.Text = configuration.PasswordParameter ?? "password";
             if (txtTokenPath != null) txtTokenPath.Text = configuration.TokenResponsePath ?? "token";
+
+            // Medya yükleme HTTP metodunu ayarla
+            if (cmbMediaUploadMethod != null)
+            {
+                string mediaMethod = configuration.MediaUploadMethod ?? "POST";
+                for (int i = 0; i < cmbMediaUploadMethod.Items.Count; i++)
+                {
+                    if (cmbMediaUploadMethod.Items[i].ToString() == mediaMethod)
+                    {
+                        cmbMediaUploadMethod.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
 
             // Token tipini seç
             for (int i = 0; i < cmbTokenType.Items.Count; i++)
@@ -780,8 +802,50 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
 
             tokenEndpointGroup.Controls.Add(tokenLayout);
 
-            // Paneli form üzerinde uygun yere ekleyelim
-            // Varsayalım ki groupBox1 ana gruplandırma
+            // MEDYA YÜKLEME AYARLARI İÇİN YENİ GRUP
+            GroupBox mediaUploadGroup = new GroupBox
+            {
+                Text = "Medya Yükleme Ayarları",
+                Dock = DockStyle.Top,
+                Height = 60
+            };
+
+            TableLayoutPanel mediaLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 1,
+                Padding = new Padding(5)
+            };
+
+            mediaLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+            mediaLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F));
+            mediaLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+
+            // Medya Yükleme HTTP Metodu
+            Label lblMediaUploadMethod = new Label
+            {
+                Text = "HTTP Metodu:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            ComboBox cmbMediaUploadMethod = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "cmbMediaUploadMethod",
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cmbMediaUploadMethod.Items.AddRange(new object[] { "POST", "PUT", "PATCH" });
+            cmbMediaUploadMethod.SelectedIndex = 0; // Varsayılan POST
+
+            mediaLayout.Controls.Add(lblMediaUploadMethod, 0, 0);
+            mediaLayout.Controls.Add(cmbMediaUploadMethod, 1, 0);
+
+            mediaUploadGroup.Controls.Add(mediaLayout);
+
+            // Panelleri form üzerinde uygun yere ekleyelim
+            this.Controls.Add(mediaUploadGroup);
             this.Controls.Add(tokenEndpointGroup);
 
             // Token türü değiştiğinde görünürlük durumu
@@ -793,12 +857,16 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                 // Token ayarlarının görünürlüğünü ayarla
                 tokenEndpointGroup.Visible = showTokenSettings;
 
+                // Medya yükleme ayarları her zaman görünür
+                mediaUploadGroup.Visible = true;
+
                 // Kullanıcı adı/şifre alanlarının görünürlüğü UpdateTokenVisibility yönteminde
                 UpdateTokenVisibility();
             };
 
             // Başlangıçta gizle (varsayılan olarak None seçili)
             tokenEndpointGroup.Visible = false;
+            mediaUploadGroup.Visible = true; // Medya yükleme ayarları her zaman görünür
         }
     }
 

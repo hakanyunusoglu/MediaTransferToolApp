@@ -53,6 +53,11 @@ namespace MediaTransferToolApp.Core.Domain
         public string TokenRequestMethod { get; set; } = "POST";
 
         /// <summary>
+        /// Medya yükleme isteği için kullanılacak HTTP metodu (POST, PUT, PATCH, vb.)
+        /// </summary>
+        public string MediaUploadMethod { get; set; } = "POST";
+
+        /// <summary>
         /// Token istek gövdesinde kullanıcı adı için parametre adı
         /// </summary>
         public string UsernameParameter { get; set; } = "username";
@@ -161,7 +166,7 @@ namespace MediaTransferToolApp.Core.Domain
         /// </summary>
         public override string ToString()
         {
-            return $"BaseUrl: {BaseUrl}, Endpoint: {Endpoint}, TokenType: {TokenType}";
+            return $"BaseUrl: {BaseUrl}, Endpoint: {Endpoint}, TokenType: {TokenType}, MediaUploadMethod: {MediaUploadMethod}";
         }
     }
 }

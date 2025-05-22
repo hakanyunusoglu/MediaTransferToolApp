@@ -237,20 +237,20 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 {
                     // Temel yapılandırma alanları
                     if (headers.ContainsKey("BaseUrl"))
-                        configuration.BaseUrl = worksheet.Cells[2, headers["BaseUrl"]].Text;
+                        configuration.BaseUrl = worksheet.Cells[2, headers["BaseUrl"]].Text?.Trim();
 
                     if (headers.ContainsKey("Endpoint"))
-                        configuration.Endpoint = worksheet.Cells[2, headers["Endpoint"]].Text;
+                        configuration.Endpoint = worksheet.Cells[2, headers["Endpoint"]].Text?.Trim();
 
                     if (headers.ContainsKey("Username"))
-                        configuration.Username = worksheet.Cells[2, headers["Username"]].Text;
+                        configuration.Username = worksheet.Cells[2, headers["Username"]].Text?.Trim();
 
                     if (headers.ContainsKey("Password"))
-                        configuration.Password = worksheet.Cells[2, headers["Password"]].Text;
+                        configuration.Password = worksheet.Cells[2, headers["Password"]].Text?.Trim();
 
                     if (headers.ContainsKey("TokenType"))
                     {
-                        string tokenTypeStr = worksheet.Cells[2, headers["TokenType"]].Text;
+                        string tokenTypeStr = worksheet.Cells[2, headers["TokenType"]].Text?.Trim();
                         if (Enum.TryParse<TokenType>(tokenTypeStr, true, out var tokenType))
                         {
                             configuration.TokenType = tokenType;
@@ -258,23 +258,27 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     }
 
                     if (headers.ContainsKey("Token"))
-                        configuration.Token = worksheet.Cells[2, headers["Token"]].Text;
+                        configuration.Token = worksheet.Cells[2, headers["Token"]].Text?.Trim();
 
                     // Yeni token yapılandırma alanları
                     if (headers.ContainsKey("TokenEndpoint"))
-                        configuration.TokenEndpoint = worksheet.Cells[2, headers["TokenEndpoint"]].Text;
+                        configuration.TokenEndpoint = worksheet.Cells[2, headers["TokenEndpoint"]].Text?.Trim();
 
                     if (headers.ContainsKey("TokenRequestMethod"))
-                        configuration.TokenRequestMethod = worksheet.Cells[2, headers["TokenRequestMethod"]].Text;
+                        configuration.TokenRequestMethod = worksheet.Cells[2, headers["TokenRequestMethod"]].Text?.Trim();
 
                     if (headers.ContainsKey("UsernameParameter"))
-                        configuration.UsernameParameter = worksheet.Cells[2, headers["UsernameParameter"]].Text;
+                        configuration.UsernameParameter = worksheet.Cells[2, headers["UsernameParameter"]].Text?.Trim();
 
                     if (headers.ContainsKey("PasswordParameter"))
-                        configuration.PasswordParameter = worksheet.Cells[2, headers["PasswordParameter"]].Text;
+                        configuration.PasswordParameter = worksheet.Cells[2, headers["PasswordParameter"]].Text?.Trim();
 
                     if (headers.ContainsKey("TokenResponsePath"))
-                        configuration.TokenResponsePath = worksheet.Cells[2, headers["TokenResponsePath"]].Text;
+                        configuration.TokenResponsePath = worksheet.Cells[2, headers["TokenResponsePath"]].Text?.Trim();
+
+                    // Yeni medya yükleme HTTP metodu alanı
+                    if (headers.ContainsKey("MediaUploadMethod"))
+                        configuration.MediaUploadMethod = worksheet.Cells[2, headers["MediaUploadMethod"]].Text?.Trim();
                 }
             }
 
@@ -344,11 +348,16 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                     if (csv.HeaderRecord.Contains("TokenResponsePath"))
                         configuration.TokenResponsePath = csv.GetField("TokenResponsePath");
+
+                    // Yeni medya yükleme HTTP metodu alanı
+                    if (csv.HeaderRecord.Contains("MediaUploadMethod"))
+                        configuration.MediaUploadMethod = csv.GetField("MediaUploadMethod");
                 }
             }
 
             return configuration;
         }
+
 
         /// <summary>
         /// Excel veya CSV dosyasından eşleştirme listesini yükler
