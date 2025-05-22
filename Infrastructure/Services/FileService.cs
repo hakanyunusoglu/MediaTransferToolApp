@@ -235,6 +235,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 // Veri satırını bul (ikinci satır)
                 if (rowCount >= 2)
                 {
+                    // Temel yapılandırma alanları
                     if (headers.ContainsKey("BaseUrl"))
                         configuration.BaseUrl = worksheet.Cells[2, headers["BaseUrl"]].Text;
 
@@ -258,6 +259,22 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                     if (headers.ContainsKey("Token"))
                         configuration.Token = worksheet.Cells[2, headers["Token"]].Text;
+
+                    // Yeni token yapılandırma alanları
+                    if (headers.ContainsKey("TokenEndpoint"))
+                        configuration.TokenEndpoint = worksheet.Cells[2, headers["TokenEndpoint"]].Text;
+
+                    if (headers.ContainsKey("TokenRequestMethod"))
+                        configuration.TokenRequestMethod = worksheet.Cells[2, headers["TokenRequestMethod"]].Text;
+
+                    if (headers.ContainsKey("UsernameParameter"))
+                        configuration.UsernameParameter = worksheet.Cells[2, headers["UsernameParameter"]].Text;
+
+                    if (headers.ContainsKey("PasswordParameter"))
+                        configuration.PasswordParameter = worksheet.Cells[2, headers["PasswordParameter"]].Text;
+
+                    if (headers.ContainsKey("TokenResponsePath"))
+                        configuration.TokenResponsePath = worksheet.Cells[2, headers["TokenResponsePath"]].Text;
                 }
             }
 
@@ -287,6 +304,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 // Veri satırını oku
                 if (csv.Read())
                 {
+                    // Temel yapılandırma alanları
                     if (csv.HeaderRecord.Contains("BaseUrl"))
                         configuration.BaseUrl = csv.GetField("BaseUrl");
 
@@ -310,6 +328,22 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                     if (csv.HeaderRecord.Contains("Token"))
                         configuration.Token = csv.GetField("Token");
+
+                    // Yeni token yapılandırma alanları
+                    if (csv.HeaderRecord.Contains("TokenEndpoint"))
+                        configuration.TokenEndpoint = csv.GetField("TokenEndpoint");
+
+                    if (csv.HeaderRecord.Contains("TokenRequestMethod"))
+                        configuration.TokenRequestMethod = csv.GetField("TokenRequestMethod");
+
+                    if (csv.HeaderRecord.Contains("UsernameParameter"))
+                        configuration.UsernameParameter = csv.GetField("UsernameParameter");
+
+                    if (csv.HeaderRecord.Contains("PasswordParameter"))
+                        configuration.PasswordParameter = csv.GetField("PasswordParameter");
+
+                    if (csv.HeaderRecord.Contains("TokenResponsePath"))
+                        configuration.TokenResponsePath = csv.GetField("TokenResponsePath");
                 }
             }
 

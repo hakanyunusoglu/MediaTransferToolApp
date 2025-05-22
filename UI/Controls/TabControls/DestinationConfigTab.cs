@@ -3,7 +3,9 @@ using MediaTransferToolApp.Core.Enums;
 using MediaTransferToolApp.Core.Interfaces;
 using MediaTransferToolApp.UI.Controls.SharedControls;
 using System;
+using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -39,6 +41,8 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             SetupToggleButtons();
             SetupEventHandlers();
             SetupTokenTypes();
+            SetupTokenEndpointFields();
+            SetupTokenTestButton();
         }
 
         /// <summary>
@@ -121,19 +125,26 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             if (selectedItem == null)
                 return;
 
-            // Token tipi None ise kullanıcı adı/şifre alanlarını göster
+            // Token tipi None ise token endpoint alanları gizlenir
             var tokenTypeNone = selectedItem.TokenType == TokenType.None;
 
-            lblUsername.Enabled = tokenTypeNone;
-            txtUsername.Enabled = tokenTypeNone;
-            lblPassword.Enabled = tokenTypeNone;
-            pnlPassword.Enabled = tokenTypeNone;
+            // Kullanıcı adı ve şifre her zaman görünür olmalı
+            lblUsername.Enabled = true;
+            txtUsername.Enabled = true;
+            lblPassword.Enabled = true;
+            pnlPassword.Enabled = true;
 
-            // Token tipi None değilse token alanını göster
+            // Token alanı, None dışındaki token türlerinde görünür olmalı
             lblToken.Enabled = !tokenTypeNone;
             pnlToken.Enabled = !tokenTypeNone;
-        }
 
+            // Token endpoint bölümünün görünürlüğü
+            GroupBox tokenEndpointGroup = Controls.Find("tokenEndpointGroup", true).FirstOrDefault() as GroupBox;
+            if (tokenEndpointGroup != null)
+            {
+                tokenEndpointGroup.Visible = !tokenTypeNone;
+            }
+        }
         /// <summary>
         /// Arayüzdeki form alanlarından hedef sunucu yapılandırması oluşturur
         /// </summary>
@@ -141,15 +152,66 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         private DestinationConfiguration GetConfigurationFromForm()
         {
             var selectedItem = cmbTokenType.SelectedItem as TokenTypeItem;
-            return new DestinationConfiguration
+
+            // Token Endpoint alanlarını al
+            TextBox txtTokenEndpoint = Controls.Find("txtTokenEndpoint", true).FirstOrDefault() as TextBox;
+            ComboBox cmbTokenMethod = Controls.Find("cmbTokenMethod", true).FirstOrDefault() as ComboBox;
+            TextBox txtUsernameParam = Controls.Find("txtUsernameParam", true).FirstOrDefault() as TextBox;
+            TextBox txtPasswordParam = Controls.Find("txtPasswordParam", true).FirstOrDefault() as TextBox;
+            TextBox txtTokenPath = Controls.Find("txtTokenPath", true).FirstOrDefault() as TextBox;
+
+            // BaseUrl değerini al ve temizle
+            string baseUrl = txtBaseUrl.Text.Trim();
+            if (!string.IsNullOrEmpty(baseUrl) && !baseUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                !baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
-                BaseUrl = txtBaseUrl.Text.Trim(),
+                // HTTP protokolünü ekle
+                baseUrl = "https://" + baseUrl;
+            }
+
+            // Token endpoint'i temizle
+            string tokenEndpoint = txtTokenEndpoint?.Text.Trim() ?? "";
+            // Tam URL ise ve BaseUrl ile başlıyorsa, göreceli path'e dönüştür
+            if (!string.IsNullOrEmpty(tokenEndpoint) &&
+                (tokenEndpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                 tokenEndpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                try
+                {
+                    Uri tokenUri = new Uri(tokenEndpoint);
+                    Uri baseUri = new Uri(baseUrl);
+
+                    // Eğer aynı domain ise, sadece path kısmını kullan
+                    if (tokenUri.Host.Equals(baseUri.Host, StringComparison.OrdinalIgnoreCase))
+                    {
+                        tokenEndpoint = tokenUri.PathAndQuery;
+                    }
+                }
+                catch
+                {
+                    // URI dönüşümünde hata oluşursa orijinal değeri kullan
+                }
+            }
+
+            // Yapılandırma oluştur
+            var config = new DestinationConfiguration
+            {
+                BaseUrl = baseUrl,
                 Endpoint = txtEndpoint.Text.Trim(),
+                // Her durumda kullanıcı adı ve şifreyi al
                 Username = txtUsername.Text.Trim(),
                 Password = txtPassword.Text.Trim(),
                 TokenType = selectedItem?.TokenType ?? TokenType.None,
-                Token = txtToken.Text.Trim()
+                Token = txtToken.Text.Trim(),
+                // Yeni alanlar - varsayılan değerlerle
+                TokenEndpoint = tokenEndpoint,
+                TokenRequestMethod = cmbTokenMethod?.SelectedItem?.ToString() ?? "POST",
+                UsernameParameter = txtUsernameParam?.Text.Trim() ?? "username",
+                PasswordParameter = txtPasswordParam?.Text.Trim() ?? "password",
+                TokenResponsePath = txtTokenPath?.Text.Trim() ?? "token"
             };
+
+            return config;
         }
 
         /// <summary>
@@ -166,6 +228,33 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             txtUsername.Text = configuration.Username;
             txtPassword.Text = configuration.Password;
             txtToken.Text = configuration.Token;
+
+            // Token endpoint alanlarını al
+            TextBox txtTokenEndpoint = Controls.Find("txtTokenEndpoint", true).FirstOrDefault() as TextBox;
+            ComboBox cmbTokenMethod = Controls.Find("cmbTokenMethod", true).FirstOrDefault() as ComboBox;
+            TextBox txtUsernameParam = Controls.Find("txtUsernameParam", true).FirstOrDefault() as TextBox;
+            TextBox txtPasswordParam = Controls.Find("txtPasswordParam", true).FirstOrDefault() as TextBox;
+            TextBox txtTokenPath = Controls.Find("txtTokenPath", true).FirstOrDefault() as TextBox;
+
+            // Yeni alanları doldur
+            if (txtTokenEndpoint != null) txtTokenEndpoint.Text = configuration.TokenEndpoint ?? "";
+
+            if (cmbTokenMethod != null)
+            {
+                string method = configuration.TokenRequestMethod ?? "POST";
+                for (int i = 0; i < cmbTokenMethod.Items.Count; i++)
+                {
+                    if (cmbTokenMethod.Items[i].ToString() == method)
+                    {
+                        cmbTokenMethod.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (txtUsernameParam != null) txtUsernameParam.Text = configuration.UsernameParameter ?? "username";
+            if (txtPasswordParam != null) txtPasswordParam.Text = configuration.PasswordParameter ?? "password";
+            if (txtTokenPath != null) txtTokenPath.Text = configuration.TokenResponsePath ?? "token";
 
             // Token tipini seç
             for (int i = 0; i < cmbTokenType.Items.Count; i++)
@@ -243,13 +332,55 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                 // Form verilerinden yapılandırma oluştur
                 var configuration = GetConfigurationFromForm();
 
-                // Yapılandırma geçerli mi kontrol et
+                // Validasyon mesajı
+                string validationMessage = "";
+
+                // Temel alanları kontrol et
+                if (string.IsNullOrWhiteSpace(configuration.BaseUrl) ||
+                    string.IsNullOrWhiteSpace(configuration.Endpoint))
+                {
+                    validationMessage += "- Base URL ve Endpoint alanları zorunludur.\n";
+                }
+
+                // Token türüne göre kontrol
+                if (configuration.TokenType == TokenType.None)
+                {
+                    // Temel kimlik doğrulama için kullanıcı adı ve şifre zorunlu
+                    if (string.IsNullOrWhiteSpace(configuration.Username) ||
+                        string.IsNullOrWhiteSpace(configuration.Password))
+                    {
+                        validationMessage += "- Kullanıcı Adı ve Şifre alanları zorunludur.\n";
+                    }
+                }
+                else
+                {
+                    // Token tabanlı kimlik doğrulama
+                    if (string.IsNullOrWhiteSpace(configuration.Token) &&
+                        (string.IsNullOrWhiteSpace(configuration.TokenEndpoint) ||
+                         string.IsNullOrWhiteSpace(configuration.Username) ||
+                         string.IsNullOrWhiteSpace(configuration.Password)))
+                    {
+                        validationMessage += "- Token alanı doluysa: Doğrudan bu token kullanılacaktır.\n";
+                        validationMessage += "- Token alanı boşsa: Token Endpoint, Kullanıcı Adı ve Şifre alanları zorunludur.\n";
+                    }
+                }
+
+                // Validasyon hatası varsa göster
+                if (!string.IsNullOrEmpty(validationMessage))
+                {
+                    MessageBox.Show(
+                        "Lütfen aşağıdaki zorunlu alanları doldurun:\n\n" + validationMessage,
+                        "Uyarı",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Yapılandırmanın geçerli olup olmadığını son bir kez kontrol et
                 if (!configuration.IsValid())
                 {
                     MessageBox.Show(
-                        "Lütfen tüm gerekli alanları doldurun.\n\n" +
-                        "- Base URL ve Endpoint alanları zorunludur.\n" +
-                        "- Token türüne göre ilgili kimlik bilgilerini girin.",
+                        "Geçersiz yapılandırma. Lütfen tüm gerekli alanları doldurun.",
                         "Uyarı",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Warning);
@@ -307,6 +438,28 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
 
                 // Bağlantıyı test et
                 SetUIState(false, "Bağlantı test ediliyor...");
+
+                // Token gerektiği halde yoksa, önce token almayı dene
+                if (configuration.TokenType != TokenType.None && string.IsNullOrEmpty(configuration.Token)
+                    && !string.IsNullOrEmpty(configuration.TokenEndpoint))
+                {
+                    await _logService.LogInfoAsync("Token olmadığı için önce token alınıyor...");
+
+                    bool tokenObtained = await _destinationService.ObtainTokenAsync();
+                    if (!tokenObtained)
+                    {
+                        await _logService.LogErrorAsync("Token alınamadı, bağlantı testi başarısız.");
+                        MessageBox.Show(
+                            "Token alınamadı. Token endpoint ve diğer token ayarlarını kontrol edin.",
+                            "Hata",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+
+                        SetUIState(true);
+                        return;
+                    }
+                }
+
                 bool isConnected = await _destinationService.TestConnectionAsync();
 
                 if (isConnected)
@@ -345,6 +498,119 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
 
                 // İleri butonunu devre dışı bırak
                 btnNext.Enabled = false;
+            }
+            finally
+            {
+                SetUIState(true);
+            }
+        }
+
+        private void SetupTokenTestButton()
+        {
+            Button btnTestToken = new Button
+            {
+                Text = "Token Al",
+                Location = new Point(btnTestConnection.Left - 140, btnTestConnection.Top),
+                Size = new Size(120, btnTestConnection.Height),
+                Name = "btnTestToken"
+            };
+
+            btnTestToken.Click += async (sender, e) => await TestTokenAsync();
+            panel1.Controls.Add(btnTestToken);
+        }
+
+        /// <summary>
+        /// Token alma işlemini test eder
+        /// </summary>
+        private async Task TestTokenAsync()
+        {
+            try
+            {
+                MessageBox.Show(
+                                 "Şifre otomatik olarak SHA256 ile hash'lenerek gönderilecektir.\n" +
+                                 "Alınan token cookie olarak saklanacak ve sonraki isteklerde otomatik gönderilecektir.",
+                                 "Bilgi",
+                                 MessageBoxButtons.OK,
+                                 MessageBoxIcon.Information);
+
+                // Yapılandırma mevcut mu kontrol et
+                var configuration = _destinationService.GetConfiguration();
+                if (configuration == null || !configuration.IsValid())
+                {
+                    MessageBox.Show(
+                        "Önce yapılandırmayı kaydedin.",
+                        "Uyarı",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Token endpoint zorunlu
+                if (string.IsNullOrEmpty(configuration.TokenEndpoint))
+                {
+                    MessageBox.Show(
+                        "Token endpoint tanımlanmamış. Lütfen token endpoint bilgisini girin.",
+                        "Uyarı",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                // Kullanıcı adı ve şifre kontrolü
+                if (!configuration.HasValidBasicAuthCredentials())
+                {
+                    MessageBox.Show(
+                        "Token almak için geçerli kullanıcı adı ve şifre gereklidir.",
+                        "Uyarı",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                SetUIState(false, "Token alınıyor...");
+
+                bool tokenObtained = await _destinationService.ObtainTokenAsync();
+
+                if (tokenObtained)
+                {
+                    // Token alındıktan sonra mevcut yapılandırmayı al (token güncellenmiş olacak)
+                    configuration = _destinationService.GetConfiguration();
+                    // Token alanını güncelle
+                    txtToken.Text = configuration.Token;
+
+                    await _logService.LogSuccessAsync("Token başarıyla alındı.");
+                    MessageBox.Show(
+                        "Token başarıyla alındı.",
+                        "Bilgi",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    var logEntries = _logService.GetAllLogs().Where(l => l.Level == LogLevel.Error)
+                                     .OrderByDescending(l => l.Timestamp)
+                                     .Take(3)
+                                     .Select(l => $"{l.Message}\n{l.ErrorDetails}")
+                                     .ToList();
+
+                    string errorDetails = string.Join("\n\n", logEntries);
+
+                    await _logService.LogErrorAsync("Token alınamadı.");
+                    MessageBox.Show(
+                        $"Token alınamadı. Lütfen endpointi kontrol edin ve tekrar deneyin.\n\nHata Detayları:\n{errorDetails}",
+                        "Hata",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                await _logService.LogErrorAsync("Token alma testi sırasında hata oluştu", ex.ToString());
+                MessageBox.Show(
+                    $"Token alma sırasında hata oluştu: {ex.Message}",
+                    "Hata",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
             }
             finally
             {
@@ -392,6 +658,143 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         {
             var configuration = _destinationService.GetConfiguration();
             return configuration != null && configuration.IsValid();
+        }
+
+        private void SetupTokenEndpointFields()
+        {
+            // Token endpoint gruplandırması için paneli ekleyelim
+            GroupBox tokenEndpointGroup = new GroupBox
+            {
+                Text = "Token Alma Ayarları",
+                Dock = DockStyle.Top,
+                Height = 180
+            };
+
+            TableLayoutPanel tokenLayout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2,
+                RowCount = 5,
+                Padding = new Padding(5)
+            };
+
+            tokenLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 30F));
+            tokenLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 70F));
+
+            for (int i = 0; i < 5; i++)
+            {
+                tokenLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 32F));
+            }
+
+            // Token Endpoint alanı
+            Label lblTokenEndpoint = new Label
+            {
+                Text = "Token Endpoint:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            TextBox txtTokenEndpoint = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "txtTokenEndpoint"
+            };
+
+            // Token Metodu alanı
+            Label lblTokenMethod = new Label
+            {
+                Text = "Token İstek Metodu:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            ComboBox cmbTokenMethod = new ComboBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "cmbTokenMethod",
+                DropDownStyle = ComboBoxStyle.DropDownList
+            };
+            cmbTokenMethod.Items.AddRange(new object[] { "POST", "GET" });
+            cmbTokenMethod.SelectedIndex = 0;
+
+            // Kullanıcı Parametre Adı
+            Label lblUsernameParam = new Label
+            {
+                Text = "Kullanıcı Adı Parametresi:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            TextBox txtUsernameParam = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "txtUsernameParam",
+                Text = "username"
+            };
+
+            // Şifre Parametre Adı
+            Label lblPasswordParam = new Label
+            {
+                Text = "Şifre Parametresi:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            TextBox txtPasswordParam = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "txtPasswordParam",
+                Text = "password"
+            };
+
+            // Token Yanıt Path
+            Label lblTokenPath = new Label
+            {
+                Text = "Token Yanıt Yolu:",
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleRight
+            };
+
+            TextBox txtTokenPath = new TextBox
+            {
+                Dock = DockStyle.Fill,
+                Name = "txtTokenPath",
+                Text = "token"
+            };
+
+            // Kontrolleri tablo layouta ekle
+            tokenLayout.Controls.Add(lblTokenEndpoint, 0, 0);
+            tokenLayout.Controls.Add(txtTokenEndpoint, 1, 0);
+            tokenLayout.Controls.Add(lblTokenMethod, 0, 1);
+            tokenLayout.Controls.Add(cmbTokenMethod, 1, 1);
+            tokenLayout.Controls.Add(lblUsernameParam, 0, 2);
+            tokenLayout.Controls.Add(txtUsernameParam, 1, 2);
+            tokenLayout.Controls.Add(lblPasswordParam, 0, 3);
+            tokenLayout.Controls.Add(txtPasswordParam, 1, 3);
+            tokenLayout.Controls.Add(lblTokenPath, 0, 4);
+            tokenLayout.Controls.Add(txtTokenPath, 1, 4);
+
+            tokenEndpointGroup.Controls.Add(tokenLayout);
+
+            // Paneli form üzerinde uygun yere ekleyelim
+            // Varsayalım ki groupBox1 ana gruplandırma
+            this.Controls.Add(tokenEndpointGroup);
+
+            // Token türü değiştiğinde görünürlük durumu
+            cmbTokenType.SelectedIndexChanged += (sender, e) =>
+            {
+                var selectedItem = cmbTokenType.SelectedItem as TokenTypeItem;
+                bool showTokenSettings = selectedItem != null && selectedItem.TokenType != TokenType.None;
+
+                // Token ayarlarının görünürlüğünü ayarla
+                tokenEndpointGroup.Visible = showTokenSettings;
+
+                // Kullanıcı adı/şifre alanlarının görünürlüğü UpdateTokenVisibility yönteminde
+                UpdateTokenVisibility();
+            };
+
+            // Başlangıçta gizle (varsayılan olarak None seçili)
+            tokenEndpointGroup.Visible = false;
         }
     }
 

@@ -1,7 +1,6 @@
-﻿using System;
+﻿using MediaTransferToolApp.Core.Enums;
+using System;
 using System.ComponentModel.DataAnnotations;
-using Newtonsoft.Json.Linq;
-using MediaTransferToolApp.Core.Enums;
 
 namespace MediaTransferToolApp.Core.Domain
 {
@@ -44,6 +43,32 @@ namespace MediaTransferToolApp.Core.Domain
         public string Token { get; set; }
 
         /// <summary>
+        /// Token alınacak endpoint
+        /// </summary>
+        public string TokenEndpoint { get; set; }
+
+        /// <summary>
+        /// Token isteği için kullanılacak HTTP metodu (GET, POST, vb.)
+        /// </summary>
+        public string TokenRequestMethod { get; set; } = "POST";
+
+        /// <summary>
+        /// Token istek gövdesinde kullanıcı adı için parametre adı
+        /// </summary>
+        public string UsernameParameter { get; set; } = "username";
+
+        /// <summary>
+        /// Token istek gövdesinde şifre için parametre adı
+        /// </summary>
+        public string PasswordParameter { get; set; } = "password";
+
+        /// <summary>
+        /// Token cevabından token değerini çıkarmak için kullanılacak JSON yolu
+        /// Örnek: "data.access_token" veya "token"
+        /// </summary>
+        public string TokenResponsePath { get; set; } = "token";
+
+        /// <summary>
         /// Token'ın geçerli bir şekilde oluşturulduğunu kontrol eder
         /// </summary>
         public bool IsTokenValid()
@@ -60,6 +85,16 @@ namespace MediaTransferToolApp.Core.Domain
         }
 
         /// <summary>
+        /// Token alabilmek için gerekli bilgilerin var olup olmadığını kontrol eder
+        /// </summary>
+        public bool CanObtainToken()
+        {
+            return !string.IsNullOrWhiteSpace(TokenEndpoint) &&
+                   !string.IsNullOrWhiteSpace(Username) &&
+                   !string.IsNullOrWhiteSpace(Password);
+        }
+
+        /// <summary>
         /// Yapılandırmanın geçerli olup olmadığını kontrol eder
         /// </summary>
         public bool IsValid()
@@ -67,13 +102,24 @@ namespace MediaTransferToolApp.Core.Domain
             bool hasBaseConfiguration = !string.IsNullOrWhiteSpace(BaseUrl) &&
                                        !string.IsNullOrWhiteSpace(Endpoint);
 
-            // Token-tabanlı kimlik doğrulama gerekiyorsa token kontrol edilir
+            // Token-tabanlı kimlik doğrulama gerekiyorsa 
             if (TokenType != TokenType.None)
             {
-                return hasBaseConfiguration && IsTokenValid();
+                // Token direkt varsa kabul et
+                if (IsTokenValid())
+                    return hasBaseConfiguration;
+
+                // Token yoksa ama TokenEndpoint ve kimlik bilgileri varsa token alınabilir
+                if (!string.IsNullOrWhiteSpace(TokenEndpoint) &&
+                    !string.IsNullOrWhiteSpace(Username) &&
+                    !string.IsNullOrWhiteSpace(Password))
+                    return hasBaseConfiguration;
+
+                // Token yok ve alınamıyorsa geçersiz
+                return false;
             }
 
-            // Temel kimlik doğrulama gerekiyorsa kullanıcı adı ve şifre kontrol edilir
+            // Temel kimlik doğrulama (None) için kullanıcı adı ve şifre zorunlu
             return hasBaseConfiguration && HasValidBasicAuthCredentials();
         }
 
@@ -86,6 +132,28 @@ namespace MediaTransferToolApp.Core.Domain
             string endpointTrimmed = Endpoint.TrimStart('/');
 
             return $"{baseUrlTrimmed}/{endpointTrimmed}";
+        }
+
+        /// <summary>
+        /// Tam Token API URL'sini oluşturur
+        /// </summary>
+        public string GetFullTokenUrl()
+        {
+            if (string.IsNullOrWhiteSpace(TokenEndpoint))
+                return null;
+
+            string baseUrlTrimmed = BaseUrl.TrimEnd('/');
+
+            // TokenEndpoint tam bir URL olabilir
+            if (TokenEndpoint.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                TokenEndpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                return TokenEndpoint;
+            }
+
+            // Değilse göreceli bir yol olarak ele al
+            string tokenEndpointTrimmed = TokenEndpoint.TrimStart('/');
+            return $"{baseUrlTrimmed}/{tokenEndpointTrimmed}";
         }
 
         /// <summary>

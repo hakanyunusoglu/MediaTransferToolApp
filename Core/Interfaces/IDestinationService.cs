@@ -44,6 +44,12 @@ namespace MediaTransferToolApp.Core.Interfaces
         Task<bool> RefreshTokenAsync();
 
         /// <summary>
+        /// Token endpoint'inden token alır
+        /// </summary>
+        /// <returns>Token alınabilirse true, değilse false</returns>
+        Task<bool> ObtainTokenAsync();
+
+        /// <summary>
         /// Mevcut hedef sunucu yapılandırmasını döndürür
         /// </summary>
         /// <returns>Hedef sunucu yapılandırması</returns>

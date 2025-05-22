@@ -69,7 +69,7 @@
             this.pnlControls.Dock = System.Windows.Forms.DockStyle.Fill;
             this.pnlControls.Location = new System.Drawing.Point(0, 0);
             this.pnlControls.Name = "pnlControls";
-            this.pnlControls.Padding = new System.Windows.Forms.Padding(11, 11, 11, 11);
+            this.pnlControls.Padding = new System.Windows.Forms.Padding(11);
             this.pnlControls.Size = new System.Drawing.Size(686, 427);
             this.pnlControls.TabIndex = 0;
             // 
