@@ -4,7 +4,6 @@ using MediaTransferToolApp.Core.Interfaces;
 using System;
 using System.ComponentModel;
 using System.Drawing;
-using System.Reflection;
 using System.Windows.Forms;
 
 namespace MediaTransferToolApp.UI.Controls.TabControls
@@ -15,6 +14,7 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
     public partial class LogTab : UserControl
     {
         private readonly ILogService _logService;
+        private BindingList<TransferLogItem> _bindingList;
 
         /// <summary>
         /// LogTab sınıfı için yapıcı
@@ -52,9 +52,10 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                 DataPropertyName = "Timestamp",
                 ReadOnly = true,
                 AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+                DefaultCellStyle = new DataGridViewCellStyle { Format = "yyyy-MM-dd HH:mm:ss" }
             };
 
-            // Seviye sütunu
+            // Seviye sütunu - Bu sütun için özel formatting yapacağız
             var levelColumn = new DataGridViewTextBoxColumn
             {
                 Name = "Level",
@@ -124,11 +125,14 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             dgvLogItems.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
             // Alternatif satır rengi
-            dgvLogItems.AlternatingRowsDefaultCellStyle.BackColor = System.Drawing.Color.FromArgb(240, 240, 240);
+            dgvLogItems.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(240, 240, 240);
 
             // Hücre biçimlendirme olayı
             dgvLogItems.CellFormatting += DgvLogItems_CellFormatting;
             dgvLogItems.DataError += DgvLogItems_DataError;
+
+            // Row tıklama olayını güvenli şekilde işle
+            dgvLogItems.CellClick += DgvLogItems_CellClick;
         }
 
         /// <summary>
@@ -140,14 +144,21 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             {
                 var logItems = _logService.GetAllLogs();
 
-                // DataSource'u değiştirmeden önce olayları geçici olarak kaldır
-                dgvLogItems.DataError -= DgvLogItems_DataError;
+                // BindingList kullanarak thread-safe veri bağlama
+                if (_bindingList == null)
+                {
+                    _bindingList = new BindingList<TransferLogItem>();
+                    dgvLogItems.DataSource = _bindingList;
+                }
 
-                dgvLogItems.DataSource = null;
-                dgvLogItems.DataSource = logItems;
+                // Mevcut verileri temizle
+                _bindingList.Clear();
 
-                // Olayları geri ekle
-                dgvLogItems.DataError += DgvLogItems_DataError;
+                // Yeni verileri ekle
+                foreach (var item in logItems)
+                {
+                    _bindingList.Add(item);
+                }
 
                 // Son eklenen log kaydına kaydır
                 if (dgvLogItems.Rows.Count > 0)
@@ -173,36 +184,36 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                 if (dgvLogItems.IsDisposed || !dgvLogItems.IsHandleCreated)
                     return;
 
-                // DataError event handler'ını geçici olarak kaldırma için Reflection kullanımı
-                DataGridViewDataErrorEventHandler tempHandler = (s, e) => { e.ThrowException = false; };
-
-                // Mevcut event handler'ları reflection ile al
-                Type controlType = typeof(Control);
-                PropertyInfo eventsProperty = controlType.GetProperty("Events",
-                    BindingFlags.NonPublic | BindingFlags.Instance);
-
-                if (eventsProperty != null)
+                // UI thread kontrolü
+                if (dgvLogItems.InvokeRequired)
                 {
-                    EventHandlerList eventHandlerList = (EventHandlerList)eventsProperty.GetValue(dgvLogItems);
-                    object key = typeof(DataGridView)
-                        .GetField("DataGridViewDataErrorEventHandler", BindingFlags.NonPublic | BindingFlags.Static)
-                        ?.GetValue(null);
+                    dgvLogItems.Invoke(new Action(SafeBindLogData));
+                    return;
+                }
 
-                    // Geçici handler ekle
-                    dgvLogItems.DataError += tempHandler;
+                // BindingList kullan
+                if (_bindingList == null)
+                {
+                    _bindingList = new BindingList<TransferLogItem>();
+                    dgvLogItems.DataSource = _bindingList;
+                }
 
-                    // Veri kaynağını ayarla
-                    dgvLogItems.DataSource = null;
-                    dgvLogItems.DataSource = logItems;
+                // Mevcut verileri temizle
+                _bindingList.Clear();
 
-                    // Geçici handler'ı kaldır
-                    dgvLogItems.DataError -= tempHandler;
+                // Yeni verileri ekle
+                foreach (var item in logItems)
+                {
+                    _bindingList.Add(item);
+                }
 
-                    // Son eklenen log kaydına kaydır
+                // Son eklenen log kaydına kaydır
+                if (dgvLogItems.Rows.Count > 0)
+                {
+                    dgvLogItems.FirstDisplayedScrollingRowIndex = dgvLogItems.Rows.Count - 1;
+                    dgvLogItems.ClearSelection();
                     if (dgvLogItems.Rows.Count > 0)
                     {
-                        dgvLogItems.FirstDisplayedScrollingRowIndex = dgvLogItems.Rows.Count - 1;
-                        dgvLogItems.ClearSelection();
                         dgvLogItems.Rows[dgvLogItems.Rows.Count - 1].Selected = true;
                     }
                 }
@@ -214,65 +225,121 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         }
 
         /// <summary>
+        /// Cell tıklama olayını güvenli şekilde işler
+        /// </summary>
+        private void DgvLogItems_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            try
+            {
+                // Geçerli bir satır indeksi olup olmadığını kontrol et
+                if (e.RowIndex >= 0 && e.RowIndex < dgvLogItems.Rows.Count)
+                {
+                    // Satırı seç
+                    dgvLogItems.ClearSelection();
+                    dgvLogItems.Rows[e.RowIndex].Selected = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cell click hatası: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Log seviyesine göre hücre rengini ayarlar
         /// </summary>
         private void DgvLogItems_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
         {
-            if (e.RowIndex < 0)
-                return;
-
-            // Önce Level sütunu için formatlama
-            if (e.ColumnIndex == dgvLogItems.Columns["Level"]?.Index)
+            try
             {
-                if (e.Value != null)
+                if (e.RowIndex < 0 || e.RowIndex >= dgvLogItems.Rows.Count)
+                    return;
+
+                // Level sütunu için formatlama
+                if (e.ColumnIndex == dgvLogItems.Columns["Level"]?.Index)
                 {
-                    try
+                    if (e.Value != null)
                     {
-                        var level = (LogLevel)e.Value;
-                        switch (level)
+                        try
                         {
-                            case LogLevel.Info:
-                                e.CellStyle.ForeColor = Color.Blue;
-                                break;
-                            case LogLevel.Warning:
-                                e.CellStyle.ForeColor = Color.Orange;
-                                break;
-                            case LogLevel.Error:
-                                e.CellStyle.ForeColor = Color.Red;
-                                break;
-                            case LogLevel.Success:
-                                e.CellStyle.ForeColor = Color.Green;
-                                break;
-                            case LogLevel.Debug:
-                                e.CellStyle.ForeColor = Color.Gray;
-                                break;
+                            LogLevel level;
+
+                            // Enum değerini parse et
+                            if (e.Value is LogLevel logLevel)
+                            {
+                                level = logLevel;
+                            }
+                            else if (Enum.TryParse(e.Value.ToString(), out LogLevel parsedLevel))
+                            {
+                                level = parsedLevel;
+                            }
+                            else
+                            {
+                                e.FormattingApplied = false;
+                                return;
+                            }
+
+                            // Seviye adını Türkçe olarak göster
+                            string levelText = level switch
+                            {
+                                LogLevel.Info => "Bilgi",
+                                LogLevel.Warning => "Uyarı",
+                                LogLevel.Error => "Hata",
+                                LogLevel.Success => "Başarı",
+                                LogLevel.Debug => "Debug",
+                                _ => level.ToString()
+                            };
+
+                            e.Value = levelText;
+
+                            // Renklendir
+                            switch (level)
+                            {
+                                case LogLevel.Info:
+                                    e.CellStyle.ForeColor = Color.Blue;
+                                    break;
+                                case LogLevel.Warning:
+                                    e.CellStyle.ForeColor = Color.Orange;
+                                    break;
+                                case LogLevel.Error:
+                                    e.CellStyle.ForeColor = Color.Red;
+                                    break;
+                                case LogLevel.Success:
+                                    e.CellStyle.ForeColor = Color.Green;
+                                    break;
+                                case LogLevel.Debug:
+                                    e.CellStyle.ForeColor = Color.Gray;
+                                    break;
+                            }
+                            e.FormattingApplied = true;
                         }
-                        e.FormattingApplied = true;
-                    }
-                    catch
-                    {
-                        e.FormattingApplied = false;
+                        catch
+                        {
+                            e.FormattingApplied = false;
+                        }
                     }
                 }
-            }
-            // Timestamp sütunu için formatlama
-            else if (e.ColumnIndex == dgvLogItems.Columns["Timestamp"]?.Index)
-            {
-                if (e.Value != null)
+                // Timestamp sütunu için formatlama
+                else if (e.ColumnIndex == dgvLogItems.Columns["Timestamp"]?.Index)
                 {
-                    try
+                    if (e.Value != null && e.Value is DateTime dateTime)
                     {
-                        if (e.Value is DateTime dateTime)
+                        try
                         {
                             e.Value = dateTime.ToString("yyyy-MM-dd HH:mm:ss");
                             e.FormattingApplied = true;
                         }
-                    }
-                    catch
-                    {
-                        e.FormattingApplied = false;
+                        catch
+                        {
+                            e.FormattingApplied = false;
+                        }
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Cell formatting hatası: {ex.Message}");
+                e.FormattingApplied = false;
             }
         }
 
@@ -284,11 +351,22 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             // Opsiyonel: Hatayı konsola yaz
             Console.WriteLine($"DataGridView hata: {e.Exception.Message} - Satır: {e.RowIndex}, Sütun: {e.ColumnIndex}");
 
-            // Sorunlu hücreyi null değer ile temizle
-            if (e.Context == DataGridViewDataErrorContexts.Formatting ||
-                e.Context == DataGridViewDataErrorContexts.Display)
+            // Sorunlu hücreyi güvenli şekilde temizle
+            try
             {
-                dgvLogItems.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = null;
+                if (e.Context == DataGridViewDataErrorContexts.Formatting ||
+                    e.Context == DataGridViewDataErrorContexts.Display)
+                {
+                    if (e.RowIndex >= 0 && e.RowIndex < dgvLogItems.Rows.Count &&
+                        e.ColumnIndex >= 0 && e.ColumnIndex < dgvLogItems.Columns.Count)
+                    {
+                        dgvLogItems.Rows[e.RowIndex].Cells[e.ColumnIndex].Value = null;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Data error handling hatası: {ex.Message}");
             }
         }
 
@@ -309,7 +387,23 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                     return;
                 }
 
-                SafeBindLogData();
+                // BindingList'e ekle - bu otomatik olarak UI'ı güncelleyecek
+                if (_bindingList != null)
+                {
+                    _bindingList.Add(logItem);
+
+                    // Son eklenen öğeye kaydır
+                    if (dgvLogItems.Rows.Count > 0)
+                    {
+                        dgvLogItems.FirstDisplayedScrollingRowIndex = dgvLogItems.Rows.Count - 1;
+                        dgvLogItems.ClearSelection();
+                        dgvLogItems.Rows[dgvLogItems.Rows.Count - 1].Selected = true;
+                    }
+                }
+                else
+                {
+                    SafeBindLogData();
+                }
             }
             catch (Exception ex)
             {
@@ -323,7 +417,21 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
         /// </summary>
         public void ClearLogView()
         {
-            dgvLogItems.DataSource = null;
+            try
+            {
+                if (_bindingList != null)
+                {
+                    _bindingList.Clear();
+                }
+                else
+                {
+                    dgvLogItems.DataSource = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Log temizleme hatası: {ex.Message}");
+            }
         }
     }
 }

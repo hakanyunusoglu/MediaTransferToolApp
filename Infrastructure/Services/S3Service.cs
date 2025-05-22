@@ -222,7 +222,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                 // Bellek akışı oluştur ve dosya içeriğini kopyala
                 var memoryStream = new MemoryStream();
-                await response.ResponseStream.CopyToAsync(memoryStream, default, cancellationToken);
+                await response.ResponseStream.CopyToAsync(memoryStream);
                 memoryStream.Position = 0;
 
                 string fileName = Path.GetFileName(key);

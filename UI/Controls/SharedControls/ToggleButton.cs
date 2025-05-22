@@ -9,11 +9,11 @@ namespace MediaTransferToolApp.UI.Controls.SharedControls
     /// <summary>
     /// Göster/Gizle butonu için özel kontrol
     /// </summary>
-    public class ToggleButton : Control
+    public class ToggleButton : Button
     {
         private bool _isToggled;
-        private Image _showImage;
-        private Image _hideImage;
+        private const string SHOW_ICON = "👁️"; // Göster ikonu
+        private const string HIDE_ICON = "🔒"; // Gizle ikonu
 
         /// <summary>
         /// Butonun durumu
@@ -24,7 +24,7 @@ namespace MediaTransferToolApp.UI.Controls.SharedControls
             set
             {
                 _isToggled = value;
-                Invalidate(); // Yeniden çiz
+                UpdateButtonText();
             }
         }
 
@@ -33,82 +33,62 @@ namespace MediaTransferToolApp.UI.Controls.SharedControls
         /// </summary>
         public ToggleButton()
         {
-            // Görsel ayarlar
-            SetStyle(ControlStyles.SupportsTransparentBackColor, true);
-            SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
-            SetStyle(ControlStyles.AllPaintingInWmPaint, true);
-            SetStyle(ControlStyles.ResizeRedraw, true);
-            SetStyle(ControlStyles.UserPaint, true);
-
-            // Görüntü ayarları
-            BackColor = Color.Transparent;
-            Cursor = Cursors.Hand;
-
-            byte[] eyeSvgBytes = Properties.Resources.eye;
-            byte[] eyeSlashSvgBytes = Properties.Resources.eye_slash;
-
-            // Göster/Gizle simgelerini yükle
-            _showImage = ConvertSvgToImage(eyeSvgBytes);
-            _hideImage = ConvertSvgToImage(eyeSlashSvgBytes);
-        }
-
-        private Image ConvertSvgToImage(byte[] svgBytes)
-        {
-            using (MemoryStream ms = new MemoryStream(svgBytes))
-            {
-                // SVG içeriğini oku
-                string svgContent = Encoding.UTF8.GetString(svgBytes);
-
-                // SVG boyutlarını al (varsayılan olarak 32x32 kullanılıyor)
-                int width = 32;
-                int height = 32;
-
-                // Bitmap oluştur
-                Bitmap bitmap = new Bitmap(width, height);
-
-                using (Graphics g = Graphics.FromImage(bitmap))
-                {
-                    // Arkaplanı temizle
-                    g.Clear(Color.Transparent);
-
-                    // SVG çizme kütüphanesi olmadığından, basit bir temsili çizim yapıyoruz
-                    if (svgContent.Contains("eye-slash") || svgContent.Contains("eye_slash"))
-                    {
-                        // Kapalı göz ikonu için
-                        g.DrawEllipse(new Pen(Color.Black, 2), 2, 8, 28, 16);
-                        g.DrawLine(new Pen(Color.Red, 2), 5, 5, 27, 27);
-                    }
-                    else
-                    {
-                        // Açık göz ikonu için
-                        g.DrawEllipse(new Pen(Color.Black, 2), 2, 8, 28, 16);
-                        g.FillEllipse(Brushes.Black, 12, 12, 8, 8);
-                    }
-                }
-
-                return bitmap;
-            }
+            InitializeButton();
+            UpdateButtonText();
         }
 
         /// <summary>
-        /// Butonu çizer
+        /// Button özelliklerini başlangıç değerlerine ayarlar
         /// </summary>
-        /// <param name="e">Paint event argümanları</param>
-        protected override void OnPaint(PaintEventArgs e)
+        private void InitializeButton()
         {
-            base.OnPaint(e);
-            Graphics g = e.Graphics;
+            // Buton görünüm ayarları
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 1;
+            FlatAppearance.BorderColor = Color.Gray;
+            BackColor = Color.White;
+            ForeColor = Color.Black;
 
-            // Hangi simgeyi kullanacağını belirle
-            Image image = _isToggled ? _showImage : _hideImage;
+            // Boyut ayarları
+            Size = new Size(30, 23);
 
-            // Simgeyi merkezde çiz
-            if (image != null)
+            // Font ayarları - emoji'ler için uygun font
+            Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular);
+
+            // Diğer özellikler
+            Cursor = Cursors.Hand;
+            UseVisualStyleBackColor = false;
+            TextAlign = ContentAlignment.MiddleCenter;
+
+            // Tooltip ekleme
+            var toolTip = new ToolTip();
+            toolTip.SetToolTip(this, "Göster/Gizle");
+        }
+
+        /// <summary>
+        /// Buton metnini duruma göre günceller
+        /// </summary>
+        private void UpdateButtonText()
+        {
+            Text = _isToggled ? SHOW_ICON : HIDE_ICON;
+
+            // Hover efekti için renk ayarları
+            if (_isToggled)
             {
-                int x = (Width - image.Width) / 2;
-                int y = (Height - image.Height) / 2;
-                g.DrawImage(image, x, y, image.Width, image.Height);
+                BackColor = Color.LightGreen;
+                FlatAppearance.BorderColor = Color.Green;
             }
+            else
+            {
+                BackColor = Color.LightCoral;
+                FlatAppearance.BorderColor = Color.Red;
+            }
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            base.OnMouseLeave(e);
+            UpdateButtonText(); // Orijinal renge dön
         }
 
         /// <summary>
@@ -118,7 +98,7 @@ namespace MediaTransferToolApp.UI.Controls.SharedControls
         protected override void OnClick(EventArgs e)
         {
             _isToggled = !_isToggled;
-            Invalidate(); // Yeniden çiz
+            UpdateButtonText();
             base.OnClick(e);
         }
     }

@@ -53,7 +53,7 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             // Password için göster/gizle butonu
             var passwordToggle = new ToggleButton();
             passwordToggle.Dock = DockStyle.Right;
-            passwordToggle.Width = 30;
+            passwordToggle.Width = 25;
             passwordToggle.Click += (sender, e) =>
             {
                 txtPassword.UseSystemPasswordChar = !txtPassword.UseSystemPasswordChar;
@@ -64,7 +64,7 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             // Token için göster/gizle butonu
             var tokenToggle = new ToggleButton();
             tokenToggle.Dock = DockStyle.Right;
-            tokenToggle.Width = 30;
+            tokenToggle.Width = 25;
             tokenToggle.Click += (sender, e) =>
             {
                 txtToken.UseSystemPasswordChar = !txtToken.UseSystemPasswordChar;
