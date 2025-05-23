@@ -1,4 +1,5 @@
 ﻿using MediaTransferToolApp.Core.Domain;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,6 +37,11 @@ namespace MediaTransferToolApp.Core.Interfaces
             string base64Content,
             string description = "",
             CancellationToken cancellationToken = default);
+
+        Task<bool> UploadMediaBatchAsync(
+       string categoryId,
+       IList<object> mediaList,
+       CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Yeni bir token alır veya mevcut token'ı yeniler

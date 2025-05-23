@@ -409,6 +409,249 @@ namespace MediaTransferToolApp.Infrastructure.Services
         }
 
         /// <summary>
+        /// Birden fazla medya dosyasını tek istekte hedef sunucuya yükler
+        /// </summary>
+        /// <param name="categoryId">Kategori ID'si</param>
+        /// <param name="mediaList">Yüklenecek medya listesi</param>
+        /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
+        /// <returns>Yükleme başarılıysa true, değilse false</returns>
+        public async Task<bool> UploadMediaBatchAsync(
+            string categoryId,
+            IList<object> mediaList,
+            CancellationToken cancellationToken = default)
+        {
+            if (_configuration == null)
+            {
+                throw new InvalidOperationException("Hedef sunucu yapılandırılmadı. Önce Configure metodu çağrılmalıdır.");
+            }
+
+            if (mediaList == null || mediaList.Count == 0)
+            {
+                await _logService.LogWarningAsync("Yüklenecek medya listesi boş.", categoryId);
+                return true; // Boş liste başarılı sayılabilir
+            }
+
+            try
+            {
+                // Token gerekli ama tanımlı değilse, token almayı dene
+                if (_configuration.TokenType != TokenType.None && string.IsNullOrEmpty(_configuration.Token))
+                {
+                    if (!await ObtainTokenAsync())
+                    {
+                        await _logService.LogErrorAsync(
+                            $"Token alınamadığı için toplu medya yüklenemedi. Medya sayısı: {mediaList.Count}",
+                            "Token alınamadı",
+                            categoryId);
+                        return false;
+                    }
+                }
+
+                // API URL'ini oluştur
+                string apiUrl = BuildApiUrl(categoryId);
+
+                // JSON içeriğini oluştur - doğrudan listeyi serialize et
+                string jsonContent = JsonConvert.SerializeObject(mediaList, Formatting.Indented);
+                var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                await _logService.LogInfoAsync(
+                    $"Toplu medya yükleme isteği gönderiliyor: {apiUrl}, Medya sayısı: {mediaList.Count}",
+                    categoryId);
+
+                // Debug için JSON içeriğinin bir kısmını logla (tüm content çok büyük olabilir)
+                var sampleJson = jsonContent.Length > 500 ? jsonContent.Substring(0, 500) + "..." : jsonContent;
+                await _logService.LogInfoAsync($"İstek içeriği örneği: {sampleJson}", categoryId);
+
+                // Authorization header'ı geçici olarak ekle (eğer token varsa)
+                string originalAuthHeader = null;
+                bool tempAuthAdded = false;
+
+                if (_configuration.TokenType != TokenType.None && !string.IsNullOrEmpty(_configuration.Token))
+                {
+                    // Mevcut Authorization header'ı sakla
+                    if (_httpClient.DefaultRequestHeaders.Authorization != null)
+                    {
+                        originalAuthHeader = _httpClient.DefaultRequestHeaders.Authorization.ToString();
+                    }
+
+                    // Yeni Authorization header'ı ayarla
+                    switch (_configuration.TokenType)
+                    {
+                        case TokenType.Bearer:
+                        case TokenType.JWT:
+                            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
+                        case TokenType.OAuth:
+                            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("OAuth", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
+                        case TokenType.ApiKey:
+                            _httpClient.DefaultRequestHeaders.Remove("X-API-KEY");
+                            _httpClient.DefaultRequestHeaders.Add("X-API-KEY", _configuration.Token);
+                            tempAuthAdded = true;
+                            break;
+                    }
+                }
+
+                try
+                {
+                    // HTTP metodunu yapılandırmadan al (varsayılan PATCH)
+                    string httpMethod = _configuration.MediaUploadMethod ?? "PATCH";
+
+                    HttpResponseMessage response;
+
+                    // Seçilen HTTP metoduna göre istek gönder
+                    switch (httpMethod.ToUpperInvariant())
+                    {
+                        case "POST":
+                            response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                            break;
+                        case "PUT":
+                            response = await _httpClient.PutAsync(apiUrl, content, cancellationToken);
+                            break;
+                        case "PATCH":
+                            var patchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                            {
+                                Content = content,
+                            };
+                            response = await _httpClient.SendAsync(patchRequest, cancellationToken);
+                            break;
+                        default:
+                            await _logService.LogWarningAsync($"Desteklenmeyen HTTP metodu: {httpMethod}. PATCH kullanılacak.");
+                            var defaultPatchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                            {
+                                Content = content
+                            };
+                            response = await _httpClient.SendAsync(defaultPatchRequest, cancellationToken);
+                            break;
+                    }
+
+                    // Response detaylarını logla
+                    await _logService.LogInfoAsync(
+                        $"Toplu medya yükleme yanıt kodu: {response.StatusCode} ({(int)response.StatusCode})",
+                        categoryId);
+
+                    // Eğer 401 Unauthorized hatası alındıysa ve token yenileme imkanı varsa
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+                    {
+                        await _logService.LogWarningAsync("401 Unauthorized alındı, token yenilemeye çalışılıyor...", categoryId);
+
+                        if (await RefreshTokenAsync())
+                        {
+                            await _logService.LogInfoAsync("Token yenilendi, tekrar deneniyor...", categoryId);
+
+                            // Token yenilendikten sonra tekrar dene
+                            switch (httpMethod.ToUpperInvariant())
+                            {
+                                case "POST":
+                                    response = await _httpClient.PostAsync(apiUrl, content, cancellationToken);
+                                    break;
+                                case "PUT":
+                                    response = await _httpClient.PutAsync(apiUrl, content, cancellationToken);
+                                    break;
+                                case "PATCH":
+                                    var retryPatchRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                                    {
+                                        Content = content
+                                    };
+                                    response = await _httpClient.SendAsync(retryPatchRequest, cancellationToken);
+                                    break;
+                                default:
+                                    var retryDefaultRequest = new HttpRequestMessage(new HttpMethod("PATCH"), apiUrl)
+                                    {
+                                        Content = content
+                                    };
+                                    response = await _httpClient.SendAsync(retryDefaultRequest, cancellationToken);
+                                    break;
+                            }
+
+                            await _logService.LogInfoAsync(
+                                $"Token yenileme sonrası yanıt kodu: {response.StatusCode} ({(int)response.StatusCode})",
+                                categoryId);
+                        }
+                    }
+
+                    // Başarılı bir yanıt kodu alındı mı kontrol et (2xx)
+                    bool isSuccessful = response.IsSuccessStatusCode;
+
+                    if (isSuccessful)
+                    {
+                        await _logService.LogSuccessAsync(
+                            $"Toplu medya yükleme başarılı ({httpMethod}): {mediaList.Count} dosya yüklendi",
+                            categoryId);
+                    }
+                    else
+                    {
+                        string responseBody = await response.Content.ReadAsStringAsync();
+                        await _logService.LogErrorAsync(
+                            $"Toplu medya yükleme başarısız ({httpMethod}): {mediaList.Count} dosya. Durum kodu: {response.StatusCode}",
+                            $"Yanıt içeriği: {responseBody}",
+                            categoryId);
+
+                        // Özel hata durumları
+                        if (response.StatusCode == System.Net.HttpStatusCode.InternalServerError)
+                        {
+                            await _logService.LogErrorAsync(
+                                "Sunucu hatası (500) alındı. Bu genellikle endpoint formatı veya istek içeriği problemi gösterir.",
+                                $"Gönderilen URL: {apiUrl}\nMediaya sayısı: {mediaList.Count}\nİstek boyutu: {jsonContent.Length} karakter",
+                                categoryId);
+                        }
+                        else if (response.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge)
+                        {
+                            await _logService.LogErrorAsync(
+                                "İstek çok büyük (413) hatası. Medya dosyalarının boyutu sunucu limitlerini aşıyor.",
+                                $"Medya sayısı: {mediaList.Count}, İstek boyutu: {jsonContent.Length} karakter",
+                                categoryId);
+                        }
+                        else if (response.StatusCode == System.Net.HttpStatusCode.BadRequest)
+                        {
+                            await _logService.LogErrorAsync(
+                                "Hatalı istek (400) hatası. JSON formatı veya içerik yanlış olabilir.",
+                                $"Yanıt: {responseBody}",
+                                categoryId);
+                        }
+                    }
+
+                    return isSuccessful;
+                }
+                finally
+                {
+                    // Geçici header'ları temizle
+                    if (tempAuthAdded)
+                    {
+                        if (!string.IsNullOrEmpty(originalAuthHeader))
+                        {
+                            // Orijinal header'ı geri yükle
+                            var parts = originalAuthHeader.Split(' ');
+                            if (parts.Length == 2)
+                            {
+                                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(parts[0], parts[1]);
+                            }
+                        }
+                        else
+                        {
+                            _httpClient.DefaultRequestHeaders.Authorization = null;
+                        }
+
+                        if (_configuration.TokenType == TokenType.ApiKey)
+                        {
+                            _httpClient.DefaultRequestHeaders.Remove("X-API-KEY");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                await _logService.LogErrorAsync(
+                    $"Toplu medya yükleme sırasında hata oluştu: {mediaList.Count} dosya",
+                    ex.ToString(),
+                    categoryId);
+
+                throw new DestinationConnectionException($"Toplu medya yükleme sırasında hata oluştu: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
         /// Yeni bir token alır veya mevcut token'ı yeniler
         /// </summary>
         /// <returns>Token alınabilirse true, değilse false</returns>

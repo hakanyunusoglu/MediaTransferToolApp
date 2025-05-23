@@ -171,7 +171,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     response = await _s3Client.ListObjectsV2Async(request);
 
                     // Dosya anahtarlarını al
-                    foreach (var s3Object in response.S3Objects)
+                    foreach (var s3Object in response?.S3Objects)
                     {
                         // Klasör yolunu çıkar, sadece dosya adını al
                         if (s3Object.Key != fullPath) // Klasör objesi değilse
