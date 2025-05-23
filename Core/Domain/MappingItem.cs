@@ -43,6 +43,21 @@ namespace MediaTransferToolApp.Core.Domain
         public string ErrorMessage { get; set; }
 
         /// <summary>
+        /// İşlem başarılı mı
+        /// </summary>
+        public bool IsSuccess { get; set; }
+
+        /// <summary>
+        /// Başarılı şekilde işlenen medya sayısı
+        /// </summary>
+        public int SuccessfulMediaCount { get; set; }
+
+        /// <summary>
+        /// Başarısız olan medya sayısı
+        /// </summary>
+        public int FailedMediaCount { get; set; }
+
+        /// <summary>
         /// Eşleştirme öğesinin geçerli olup olmadığını kontrol eder
         /// </summary>
         public bool IsValid()

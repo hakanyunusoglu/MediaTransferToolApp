@@ -303,6 +303,9 @@
     <EmbeddedResource Include="UI\Controls\TabControls\DestinationConfigTab.resx">
       <DependentUpon>DestinationConfigTab.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="UI\Controls\TabControls\TransferTab.resx">
+      <DependentUpon>TransferTab.cs</DependentUpon>
+    </EmbeddedResource>
     <None Include="MediaTransferToolApp_TemporaryKey.pfx" />
     <None Include="packages.config" />
     <None Include="Properties\Settings.settings">

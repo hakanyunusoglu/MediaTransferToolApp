@@ -2,6 +2,7 @@
 using MediaTransferToolApp.UI.Forms.PopupForms;
 using System;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace MediaTransferToolApp.UI.Controls.TabControls
@@ -38,6 +39,95 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             InitializeComponent();
             SetupEventHandlers();
             InitializeProgressBar();
+        }
+
+        private void SetupMappingResultsGrid()
+        {
+            dgvMappingResults.AutoGenerateColumns = false;
+            dgvMappingResults.Columns.Clear();
+
+            // Durum sütunu
+            var statusColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "Status",
+                HeaderText = "DURUM",
+                DataPropertyName = "IsSuccess",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells
+            };
+
+            // ID sütunu
+            var idColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "CategoryId",
+                HeaderText = "ID",
+                DataPropertyName = "CategoryId",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells
+            };
+
+            // İsim sütunu
+            var nameColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "FolderName",
+                HeaderText = "KLASÖR ADI",
+                DataPropertyName = "FolderName",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+                MinimumWidth = 150
+            };
+
+            // Toplam Medya sütunu
+            var totalMediaColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "ProcessedMediaCount",
+                HeaderText = "TOPLAM MEDYA",
+                DataPropertyName = "ProcessedMediaCount",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells
+            };
+
+            // Başarılı Medya sütunu
+            var successMediaColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "SuccessfulMediaCount",
+                HeaderText = "BAŞARILI MEDYA",
+                DataPropertyName = "SuccessfulMediaCount",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells
+            };
+
+            // Başarısız Medya sütunu
+            var failedMediaColumn = new DataGridViewTextBoxColumn
+            {
+                Name = "FailedMediaCount",
+                HeaderText = "BAŞARISIZ MEDYA",
+                DataPropertyName = "FailedMediaCount",
+                ReadOnly = true,
+                AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells
+            };
+
+            // Sütunları ekle
+            dgvMappingResults.Columns.Add(statusColumn);
+            dgvMappingResults.Columns.Add(idColumn);
+            dgvMappingResults.Columns.Add(nameColumn);
+            dgvMappingResults.Columns.Add(totalMediaColumn);
+            dgvMappingResults.Columns.Add(successMediaColumn);
+            dgvMappingResults.Columns.Add(failedMediaColumn);
+
+            // DataGridView biçimlendirme
+            dgvMappingResults.CellFormatting += DgvMappingResults_CellFormatting;
+        }
+
+        private void DgvMappingResults_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (e.ColumnIndex == dgvMappingResults.Columns["Status"].Index && e.Value != null)
+            {
+                bool isSuccess = (bool)e.Value;
+                e.Value = isSuccess ? "BAŞARILI" : "BAŞARISIZ";
+                e.CellStyle.ForeColor = isSuccess ? Color.Green : Color.Red;
+                e.FormattingApplied = true;
+            }
         }
 
         /// <summary>
@@ -187,6 +277,7 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
                     lblProgressMediaCount.ForeColor = SystemColors.ControlText;
                 }
 
+                UpdateMappingResultsGrid();
                 // Form'u yenile
                 this.Refresh();
                 Application.DoEvents();
@@ -198,6 +289,24 @@ namespace MediaTransferToolApp.UI.Controls.TabControls
             }
         }
 
+        private void UpdateMappingResultsGrid()
+        {
+            // Transfer servisinden işlenmiş öğeleri al
+            var results = _transferService.GetResults();
+
+            // Sadece işlenmiş öğeleri göster
+            var processedItems = results.Where(m => m.Processed).ToList();
+
+            // DataGridView veri kaynağını güncelle
+            dgvMappingResults.DataSource = null;
+            dgvMappingResults.DataSource = processedItems;
+
+            // Son eklenen satıra kaydır
+            if (dgvMappingResults.Rows.Count > 0)
+            {
+                dgvMappingResults.FirstDisplayedScrollingRowIndex = dgvMappingResults.Rows.Count - 1;
+            }
+        }
 
         /// <summary>
         /// Transfer özetini günceller

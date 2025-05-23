@@ -39,6 +39,8 @@ namespace MediaTransferToolApp.Core.Interfaces
         /// <returns>Base64 formatında dosya içeriği</returns>
         Task<string> ConvertToBase64Async(Stream fileStream, string fileName);
 
+        Task<bool> AppendToCustomLogFileAsync(string fileName, string logEntry);
+
         /// <summary>
         /// Dosya türünü belirler (Excel veya CSV)
         /// </summary>

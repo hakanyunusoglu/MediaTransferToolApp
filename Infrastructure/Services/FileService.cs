@@ -658,5 +658,28 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 return false;
             }
         }
+
+        public async Task<bool> AppendToCustomLogFileAsync(string fileName, string logEntry)
+        {
+            try
+            {
+                // Log klasörünü oluştur
+                string logDirectory = EnsureLogDirectoryExists();
+                string filePath = Path.Combine(logDirectory, fileName);
+
+                // Dosyaya yeni satır ekleyerek yaz
+                using (var writer = new StreamWriter(filePath, true, Encoding.UTF8))
+                {
+                    await writer.WriteLineAsync(logEntry);
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Özel log dosyasına yazma hatası: {ex.Message}");
+                return false;
+            }
+        }
     }
 }

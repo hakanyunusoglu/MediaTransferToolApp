@@ -227,9 +227,10 @@ namespace MediaTransferToolApp.Infrastructure.Services
         /// <param name="mappingItem">Eşleştirme öğesi</param>
         /// <param name="cancellationToken">İsteğe bağlı iptal token'ı</param>
         /// <returns>İşlem başarılıysa true, değilse false</returns>
+        // TransferService sınıfında ProcessMappingItemAsync metodunu güncelleyelim
         public async Task<bool> ProcessMappingItemAsync(
-    MappingItem mappingItem,
-    CancellationToken cancellationToken = default)
+            MappingItem mappingItem,
+            CancellationToken cancellationToken = default)
         {
             if (mappingItem == null)
                 throw new ArgumentNullException(nameof(mappingItem));
@@ -244,6 +245,8 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 mappingItem.Processed = false;
                 mappingItem.ProcessedMediaCount = 0;
                 mappingItem.ErrorMessage = null;
+                mappingItem.SuccessfulMediaCount = 0;  // Yeni eklenen özellik
+                mappingItem.FailedMediaCount = 0;     // Yeni eklenen özellik
 
                 await _logService.LogInfoAsync(
                     $"Klasör işlemi başlatıldı: {mappingItem.FolderName}",
@@ -252,6 +255,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
 
                 // Önce klasördeki dosya listesini al
                 var fileKeys = await _s3Service.ListFilesAsync(mappingItem.FolderName);
+
                 await _logService.LogInfoAsync(
                     $"Klasörde {fileKeys.Count} adet dosya bulundu: {mappingItem.FolderName}",
                     mappingItem.CategoryId,
@@ -264,9 +268,14 @@ namespace MediaTransferToolApp.Infrastructure.Services
                         mappingItem.CategoryId,
                         mappingItem.FolderName);
 
+                    // Boş klasör bilgisini failedOrEmptyItems.txt'ye ekle
+                    string failedLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - 0";
+                    await _fileService.AppendToCustomLogFileAsync("failedOrEmptyItems.txt", failedLogEntry);
+
                     mappingItem.ProcessEndTime = DateTime.Now;
                     mappingItem.Processed = true;
                     mappingItem.ProcessedMediaCount = 0;
+                    mappingItem.IsSuccess = false;  // Yeni eklenen özellik
                     return true; // Boş klasör de başarılı sayılabilir
                 }
 
@@ -351,6 +360,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     catch (Exception fileEx)
                     {
                         failCount++;
+                        mappingItem.FailedMediaCount++;  // Başarısız medya sayısını artır
                         _failedUploads++;
 
                         string fileName = Path.GetFileName(fileKey);
@@ -379,6 +389,7 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 }
 
                 // Tüm dosyalar işlendikten sonra tek seferde sunucuya gönder
+                bool uploadSuccess = false;
                 if (mediaList.Count > 0)
                 {
                     await _logService.LogInfoAsync(
@@ -389,27 +400,41 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     try
                     {
                         // Toplu medya yükleme işlemi
-                        bool uploadSuccess = await _destinationService.UploadMediaBatchAsync(
+                        uploadSuccess = await _destinationService.UploadMediaBatchAsync(
                             mappingItem.CategoryId,
                             mediaList,
                             cancellationToken);
 
                         if (uploadSuccess)
                         {
+                            mappingItem.SuccessfulMediaCount = mediaList.Count;  // Başarılı medya sayısını güncelle
                             _successfulUploads += mediaList.Count;
                             await _logService.LogSuccessAsync(
                                 $"Toplu medya yükleme başarılı: {mediaList.Count} dosya yüklendi",
                                 mappingItem.CategoryId,
                                 mappingItem.FolderName);
+
+                            // Başarılı log kaydını ekle
+                            string successLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - {mediaList.Count}";
+                            await _fileService.AppendToCustomLogFileAsync("successUploadedItems.txt", successLogEntry);
+
+                            mappingItem.IsSuccess = true;
                         }
                         else
                         {
+                            mappingItem.FailedMediaCount += mediaList.Count;  // Başarısız medya sayısını güncelle
                             _failedUploads += mediaList.Count;
                             await _logService.LogErrorAsync(
                                 $"Toplu medya yükleme başarısız: {mediaList.Count} dosya yüklenemedi",
                                 "Hedef sunucu yükleme hatası",
                                 mappingItem.CategoryId,
                                 mappingItem.FolderName);
+
+                            // Başarısız log kaydını ekle
+                            string failedLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - {mediaList.Count}";
+                            await _fileService.AppendToCustomLogFileAsync("failedOrEmptyItems.txt", failedLogEntry);
+
+                            mappingItem.IsSuccess = false;
                         }
 
                         // Son ilerleme durumunu güncelle
@@ -428,12 +453,19 @@ namespace MediaTransferToolApp.Infrastructure.Services
                     }
                     catch (Exception uploadEx)
                     {
+                        mappingItem.FailedMediaCount += mediaList.Count;  // Başarısız medya sayısını güncelle
                         _failedUploads += mediaList.Count;
                         await _logService.LogErrorAsync(
                             $"Toplu medya yükleme sırasında hata oluştu: {mediaList.Count} dosya",
                             uploadEx.ToString(),
                             mappingItem.CategoryId,
                             mappingItem.FolderName);
+
+                        // Başarısız log kaydını ekle
+                        string failedLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - {mediaList.Count}";
+                        await _fileService.AppendToCustomLogFileAsync("failedOrEmptyItems.txt", failedLogEntry);
+
+                        mappingItem.IsSuccess = false;
                     }
                 }
                 else
@@ -442,6 +474,12 @@ namespace MediaTransferToolApp.Infrastructure.Services
                         $"Yüklenecek geçerli medya bulunamadı: {mappingItem.FolderName}",
                         mappingItem.CategoryId,
                         mappingItem.FolderName);
+
+                    // Boş medya listesi log kaydını ekle
+                    string failedLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - 0";
+                    await _fileService.AppendToCustomLogFileAsync("failedOrEmptyItems.txt", failedLogEntry);
+
+                    mappingItem.IsSuccess = false;
                 }
 
                 // İşlem sonuçlarını kaydet
@@ -452,25 +490,30 @@ namespace MediaTransferToolApp.Infrastructure.Services
                 await _logService.LogSuccessAsync(
                     $"Klasör işlemi tamamlandı: {mappingItem.FolderName}, " +
                     $"Toplam işlenen: {processedCount}, " +
-                    $"Başarılı: {successCount}, " +
-                    $"Başarısız: {failCount}, " +
+                    $"Başarılı: {mappingItem.SuccessfulMediaCount}, " +
+                    $"Başarısız: {mappingItem.FailedMediaCount}, " +
                     $"Yüklenen: {mediaList.Count}",
                     mappingItem.CategoryId,
                     mappingItem.FolderName);
 
-                return mediaList.Count > 0; // En az bir dosya yüklendiyse başarılı
+                return mediaList.Count > 0 && uploadSuccess; // En az bir dosya yüklendiyse ve başarılıysa
             }
             catch (Exception ex)
             {
                 mappingItem.ProcessEndTime = DateTime.Now;
                 mappingItem.Processed = true;
                 mappingItem.ErrorMessage = ex.Message;
+                mappingItem.IsSuccess = false;
 
                 await _logService.LogErrorAsync(
                     $"Klasör işlenirken hata oluştu: {mappingItem.FolderName}",
                     ex.ToString(),
                     mappingItem.CategoryId,
                     mappingItem.FolderName);
+
+                // Hata log kaydını ekle
+                string failedLogEntry = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} - {mappingItem.CategoryId} - {mappingItem.FolderName} - 0 - HATA: {ex.Message}";
+                await _fileService.AppendToCustomLogFileAsync("failedOrEmptyItems.txt", failedLogEntry);
 
                 return false;
             }
